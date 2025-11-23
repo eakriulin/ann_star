@@ -1,0 +1,3 @@
+# ANNs Optimization with A*
+
+This repository introduces an A*-based optimization algorithm for feedforward neural networks. The study examines whether A* can be repurposed for ANN training and whether it is capable of escaping local minima that trap gradient-based methods. First, neural network optimization was redefined as a search problem. Then, an A*-based optimization algorithm was developed. For comparison, a gradient-based backpropagation algorithm was implemented. Both algorithms were tested on three classification tasks using the Iris, Wine, and Digits datasets. Results demonstrate that A* can successfully train feedforward neural networks with performance comparable to backpropagation.
