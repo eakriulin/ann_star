@@ -17,7 +17,7 @@ def train(
     last_activation: str,
     should_plot_accuracy_vs_depth: bool,
 ) -> tuple[float, float]:
-    print('Setting things up...\n')
+    start_time = time.time()
 
     initial_neural_network = copy_neural_network(neural_network)
     
@@ -84,6 +84,8 @@ def train(
         
         optimize()
 
+    train_time = time.time() - start_time
+
     for i, node in enumerate(solutions):
         print(f'\nSolution {i + 1}:')
         print(f'Train: loss = {node.loss:.4f}, accuracy = {node.accuracy:.4f}, depth = {node.depth}')
@@ -93,13 +95,15 @@ def train(
 
         # save_neural_network(node.neural_network, f'./finals/a*_{dataset}_{time.time()}.txt')
 
-        n_parameters_updated = count_updated_parameters(initial_neural_network, node.neural_network)
-        print(f'Updated {n_parameters_updated} parameters out of {count_parameters(neural_network)}')
+        updated_params_count = count_updated_parameters(initial_neural_network, node.neural_network)
+        print(f'Updated {updated_params_count} parameters out of {count_parameters(neural_network)}')
+
+    print(f'Train time, sec = {train_time:.2f}')
 
     if should_plot_accuracy_vs_depth:
         plot_accuracy_vs_depth(solutions[0], goal, dataset)
 
-    return test_accuracy, test_loss
+    return test_accuracy, test_loss, updated_params_count, train_time
 
 class Node:
     def __init__(self, depth: int, neural_network: list[tuple[np.ndarray, np.ndarray]], loss: float, accuracy: float, parent = None):

@@ -14,6 +14,8 @@ def train(
     last_activation: str,
     dataset: str
 ) -> tuple[float, float]:
+    start_time = time.time()
+
     initial_neural_network = copy_neural_network(neural_network)
 
     print('Training...')
@@ -41,17 +43,19 @@ def train(
             epoch_accuracy /= len(train_inputs)
             print(f'\tepoch {e}: loss {epoch_loss:.3f}, accuracy {epoch_accuracy:.3f}')
 
+    train_time = time.time() - start_time
+    
     test_As, _ = forward(neural_network, test_inputs, last_activation)
     test_loss = cross_entropy_loss(test_labels, test_As[-1])
     test_accuracy = accuracy(test_labels, test_As[-1])
     print(f'--> Test: loss = {test_loss:.4f}, accuracy = {test_accuracy:.4f}')
 
-    # save_neural_network(neural_network, f'./finals/bp_{dataset}_{time.time()}.txt')
+    updated_params_count = count_updated_parameters(initial_neural_network, neural_network)
+    print(f'Updated {updated_params_count} parameters out of {count_parameters(neural_network)}')
 
-    n_parameters_updated = count_updated_parameters(initial_neural_network, neural_network)
-    print(f'Updated {n_parameters_updated} parameters out of {count_parameters(neural_network)}')
+    print(f'Train time, sec = {train_time:.2f}')
 
-    return test_accuracy, test_loss
+    return test_accuracy, test_loss, updated_params_count, train_time
 
 def backward(
     neural_network: list[tuple[np.ndarray, np.ndarray]],
