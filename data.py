@@ -1,22 +1,23 @@
+from calendar import day_abbr
 import os
 import numpy as np
 
-def get(dataset: str)  -> tuple[np.ndarray, np.ndarray]:
+def get(dataset: str, should_split: bool = True)  -> tuple:
     if dataset == 'iris':
-        return get_iris()
+        return get_iris(should_split)
     
     if dataset == 'wine':
-        return get_wine()
+        return get_wine(should_split)
 
     if dataset == 'digits':
-        return get_digits()
+        return get_digits(should_split)
     
     if dataset == 'mnist':
-        return get_mnist()
+        return get_mnist(should_split)
 
     raise Exception(f'Unknown dataset — {dataset}')
 
-def get_iris() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def get_iris(should_split: bool = True) -> tuple:
     class_name_to_id = {"Iris-setosa": 0, "Iris-versicolor": 1, "Iris-virginica": 2}
 
     data = np.loadtxt(os.path.join('datasets', 'iris', 'iris.data'), dtype=np.float64, delimiter=',', converters={4: lambda class_name: class_name_to_id[class_name]})
@@ -26,9 +27,12 @@ def get_iris() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
 
     inputs = standardize(inputs)
 
-    return split(inputs, labels)
+    if should_split:
+        return split(inputs, labels)
+    
+    return inputs, labels
 
-def get_wine() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def get_wine(should_split: bool = True) -> tuple:
     data = np.loadtxt(os.path.join('datasets', 'wine', 'wine.data'), dtype=np.float64, delimiter=',', converters={0: lambda class_id: int(class_id) - 1})
 
     inputs = data[:, 1:]
@@ -36,9 +40,12 @@ def get_wine() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
 
     inputs = standardize(inputs)
 
-    return split(inputs, labels)
+    if should_split:
+        return split(inputs, labels)
 
-def get_digits()  -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    return inputs, labels
+
+def get_digits(should_split: bool = True)  -> tuple:
     train_data = np.loadtxt(os.path.join('datasets', 'digits', 'optdigits.tra'), dtype=np.float64, delimiter=',')
     test_data = np.loadtxt(os.path.join('datasets', 'digits', 'optdigits.tes'), dtype=np.float64, delimiter=',')
 
@@ -48,17 +55,23 @@ def get_digits()  -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     test_inputs = test_data[:, :-1] / 16.0
     test_labels = test_data[:, -1].reshape(len(test_data), 1).astype(int)
 
-    train_indices = np.random.permutation(len(train_inputs))
-    train_inputs = train_inputs[train_indices]
-    train_labels = train_labels[train_indices]
+    if should_split:
+        train_indices = np.random.permutation(len(train_inputs))
+        train_inputs = train_inputs[train_indices]
+        train_labels = train_labels[train_indices]
 
-    test_indices = np.random.permutation(len(test_inputs))
-    test_inputs = test_inputs[test_indices]
-    test_labels = test_labels[test_indices]
+        test_indices = np.random.permutation(len(test_inputs))
+        test_inputs = test_inputs[test_indices]
+        test_labels = test_labels[test_indices]
 
-    return train_inputs, train_labels, test_inputs, test_labels
+        return train_inputs, train_labels, test_inputs, test_labels
 
-def get_mnist()  -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    inputs = np.concat([train_inputs, test_inputs])
+    labels = np.concat([train_labels, test_labels])
+
+    return inputs, labels
+
+def get_mnist(should_split: bool = True)  -> tuple:
     train_data = np.loadtxt(os.path.join('datasets', 'mnist', 'mnist_train.csv'), dtype=np.float64, delimiter=',')
     test_data = np.loadtxt(os.path.join('datasets', 'mnist', 'mnist_test.csv'), dtype=np.float64, delimiter=',')
 
@@ -68,15 +81,21 @@ def get_mnist()  -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     test_inputs = test_data[:, 1:] / 255.0
     test_labels = test_data[:, 0].reshape(len(test_data), 1).astype(int)
 
-    train_indices = np.random.permutation(len(train_inputs))
-    train_inputs = train_inputs[train_indices]
-    train_labels = train_labels[train_indices]
+    if should_split:
+        train_indices = np.random.permutation(len(train_inputs))
+        train_inputs = train_inputs[train_indices]
+        train_labels = train_labels[train_indices]
 
-    test_indices = np.random.permutation(len(test_inputs))
-    test_inputs = test_inputs[test_indices]
-    test_labels = test_labels[test_indices]
+        test_indices = np.random.permutation(len(test_inputs))
+        test_inputs = test_inputs[test_indices]
+        test_labels = test_labels[test_indices]
 
-    return train_inputs, train_labels, test_inputs, test_labels
+        return train_inputs, train_labels, test_inputs, test_labels
+
+    inputs = np.concat([train_inputs, test_inputs])
+    labels = np.concat([train_labels, test_labels])
+
+    return inputs, labels
 
 def standardize(data: np.ndarray) -> np.ndarray:
     return (data - np.mean(data, axis=0)) / np.std(data, axis=0)

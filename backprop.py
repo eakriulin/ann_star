@@ -12,7 +12,7 @@ def train(
     batch_size: int,
     n_epochs: int,
     dataset: str
-) -> None:
+) -> tuple[float, float]:
     initial_neural_network = copy_neural_network(neural_network)
 
     print('Training...')
@@ -43,12 +43,14 @@ def train(
     test_As, _ = forward(neural_network, test_inputs)
     test_loss = cross_entropy_loss(test_labels, test_As[-1])
     test_accuracy = accuracy(test_labels, test_As[-1])
-    print(f'Test Loss = {test_loss:.4f}, Test Accuracy = {test_accuracy:.4f}')
+    print(f'--> Test: loss = {test_loss:.4f}, accuracy = {test_accuracy:.4f}')
 
     # save_neural_network(neural_network, f'./finals/bp_{dataset}_{time.time()}.txt')
 
     n_parameters_updated = count_updated_parameters(initial_neural_network, neural_network)
     print(f'Updated {n_parameters_updated} parameters out of {count_parameters(neural_network)}')
+
+    return test_accuracy, test_loss
 
 def backward(
     neural_network: list[tuple[np.ndarray, np.ndarray]],

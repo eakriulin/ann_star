@@ -11,9 +11,11 @@ def train(
     train_labels: np.ndarray,
     test_inputs: np.ndarray,
     test_labels: np.ndarray,
+    goal: float,
     batch_size: int,
-    dataset: str
-):
+    dataset: str,
+    should_plot_accuracy_vs_depth: bool,
+) -> tuple[float, float]:
     print('Setting things up...\n')
 
     initial_neural_network = copy_neural_network(neural_network)
@@ -23,7 +25,6 @@ def train(
     n_solutions = 1
 
     actions = [0.001, -0.001]
-    goal = 0.96
     solutions: list[Node] = []
 
     def cost_fn(node: Node):
@@ -86,38 +87,18 @@ def train(
         print(f'\nSolution {i + 1}:')
         print(f'Train: loss = {node.loss:.4f}, accuracy = {node.accuracy:.4f}, depth = {node.depth}')
 
-        print('\nTest:')
-        is_goal(node, goal, test_inputs, test_labels, len(test_inputs))
+        test_loss, test_accuracy = evaluate(node.neural_network, test_inputs, test_labels)
+        print(f'--> Test: loss = {test_loss:.4f}, accuracy = {test_accuracy:.4f}')
 
         # save_neural_network(node.neural_network, f'./finals/a*_{dataset}_{time.time()}.txt')
 
         n_parameters_updated = count_updated_parameters(initial_neural_network, node.neural_network)
         print(f'Updated {n_parameters_updated} parameters out of {count_parameters(neural_network)}')
 
-    current = solutions[0]
-    accuracy_per_depth: dict = {}
+    if should_plot_accuracy_vs_depth:
+        plot_accuracy_vs_depth(solutions[0], goal, dataset)
 
-    while current.parent is not None:
-        accuracy_per_depth[current.depth] = current.accuracy
-        current = current.parent
-    
-    plt.figure(figsize=(10, 6))
-    depths = sorted(accuracy_per_depth.keys())
-    accuracies = [accuracy_per_depth[d] for d in depths]
-    
-    plt.plot(depths, accuracies, 'b-', marker='o')
-    plt.title('Accuracy vs Search Depth')
-    plt.xlabel('Depth')
-    plt.ylabel('Accuracy')
-    plt.grid(True)
-    
-    # Add horizontal line at goal accuracy
-    plt.axhline(y=goal, color='r', linestyle='--', label=f'Goal Accuracy: {goal}')
-    plt.legend()
-    
-    # Save the plot
-    plt.savefig(f'./accuracy_vs_depth_{dataset}_{time.time()}.png')
-    plt.show()
+    return test_accuracy, test_loss
 
 class Node:
     def __init__(self, depth: int, neural_network: list[tuple[np.ndarray, np.ndarray]], loss: float, accuracy: float, parent = None):
@@ -189,3 +170,27 @@ def evaluate(
 ) -> np.float64:
     As, _ = forward(neural_network, inputs)
     return cross_entropy_loss(labels, As[-1]), accuracy(labels, As[-1])
+
+def plot_accuracy_vs_depth(solution: Node, goal: float, dataset: str) -> None:
+    current = solution
+    accuracy_per_depth: dict = {}
+
+    while current.parent is not None:
+        accuracy_per_depth[current.depth] = current.accuracy
+        current = current.parent
+    
+    plt.figure(figsize=(10, 6))
+    depths = sorted(accuracy_per_depth.keys())
+    accuracies = [accuracy_per_depth[d] for d in depths]
+    
+    plt.plot(depths, accuracies, 'b-', marker='o')
+    plt.title('Accuracy vs Search Depth')
+    plt.xlabel('Depth')
+    plt.ylabel('Accuracy')
+    plt.grid(True)
+    
+    # Add horizontal line at goal accuracy
+    plt.axhline(y=goal, color='r', linestyle='--', label=f'Goal Accuracy: {goal}')
+    plt.legend()
+    
+    plt.savefig(f'./accuracy_vs_depth_{dataset}_{time.time()}.png')
