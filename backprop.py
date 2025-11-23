@@ -11,6 +11,7 @@ def train(
     learning_rate: float,
     batch_size: int,
     n_epochs: int,
+    last_activation: str,
     dataset: str
 ) -> tuple[float, float]:
     initial_neural_network = copy_neural_network(neural_network)
@@ -25,11 +26,11 @@ def train(
             batch_inputs = train_inputs[batch_idx:batch_idx + batch_size]
             batch_labels = train_labels[batch_idx:batch_idx + batch_size]
 
-            batch_As, batch_Zs = forward(neural_network, batch_inputs)
+            batch_As, batch_Zs = forward(neural_network, batch_inputs, last_activation)
             batch_loss = cross_entropy_loss(batch_labels, batch_As[-1])
 
             batch_loss_derivative = cross_entropy_loss(batch_labels, batch_Zs[-1], as_derivative=True)
-            gradients = backward(neural_network, batch_inputs, batch_As, batch_Zs, batch_loss_derivative)
+            gradients = backward(neural_network, batch_inputs, batch_As, batch_Zs, batch_loss_derivative, last_activation)
             update_parameters(neural_network, gradients, learning_rate)
 
             epoch_loss += batch_loss * len(batch_inputs)
@@ -40,7 +41,7 @@ def train(
             epoch_accuracy /= len(train_inputs)
             print(f'\tepoch {e}: loss {epoch_loss:.3f}, accuracy {epoch_accuracy:.3f}')
 
-    test_As, _ = forward(neural_network, test_inputs)
+    test_As, _ = forward(neural_network, test_inputs, last_activation)
     test_loss = cross_entropy_loss(test_labels, test_As[-1])
     test_accuracy = accuracy(test_labels, test_As[-1])
     print(f'--> Test: loss = {test_loss:.4f}, accuracy = {test_accuracy:.4f}')
@@ -58,16 +59,17 @@ def backward(
     As: np.ndarray,
     Zs: np.ndarray,
     loss_derivative: np.ndarray,
+    last_activation: str,
 ) -> list[tuple[np.ndarray, np.ndarray]]:
     n_layers = len(neural_network)
     last_layer_idx = n_layers - 1
 
     gradients = [None] * n_layers
+    last_activation_fn = sigmoid if last_activation == 'sigmoid' else relu
 
     for l in range(last_layer_idx, -1, -1):
         if l == last_layer_idx:
-            # delta = loss_derivative * sigmoid(Zs[l], as_derivative=True)
-            delta = loss_derivative * relu(Zs[l], as_derivative=True)
+            delta = loss_derivative * last_activation_fn(Zs[l], as_derivative=True)
         else:
             W_of_next_layer, _ = neural_network[l + 1]
             delta = np.matmul(delta, W_of_next_layer.T) * relu(Zs[l], as_derivative=True)

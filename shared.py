@@ -5,6 +5,7 @@ np.seterr(divide='ignore')
 def forward(
     neural_network: list[tuple[np.ndarray, np.ndarray]],
     inputs: np.ndarray,
+    last_activation: str,
 ) -> tuple[list[np.ndarray], list[np.ndarray]]:
     n_layers = len(neural_network)
     last_layer_idx = n_layers - 1
@@ -12,13 +13,14 @@ def forward(
     Zs = [None] * n_layers # note: layer input x layer weights + bias
     As = [None] * n_layers # note: layer activations
 
+    last_activation = sigmoid if last_activation == 'sigmoid' else relu
+
     for l in range(0, n_layers):
         W, b = neural_network[l]
         layer_input = inputs if l == 0 else As[l - 1]
 
         Zs[l] = np.matmul(layer_input, W) + np.squeeze(b)
-        # As[l] = sigmoid(Zs[l]) if l == last_layer_idx else relu(Zs[l])
-        As[l] = relu(Zs[l])
+        As[l] = last_activation(Zs[l]) if l == last_layer_idx else relu(Zs[l])
 
     return As, Zs
 

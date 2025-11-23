@@ -14,6 +14,7 @@ def train(
     goal: float,
     batch_size: int,
     dataset: str,
+    last_activation: str,
     should_plot_accuracy_vs_depth: bool,
 ) -> tuple[float, float]:
     print('Setting things up...\n')
@@ -53,7 +54,7 @@ def train(
         node: Node = frontier.pop()
         print(f'\t{i}: loss = {node.loss:.4f}, accuracy = {node.accuracy:.4f}, depth = {node.depth}')
 
-        if is_goal(node, goal, train_inputs, train_labels, batch_size):
+        if is_goal(node, goal, train_inputs, train_labels, batch_size, last_activation):
             solutions.append(node)
             if len(solutions) == n_solutions:
                 break
@@ -74,7 +75,7 @@ def train(
                                 next_neural_network = copy_neural_network(node.neural_network)
                                 next_neural_network[layer_idx][param_idx][row_idx][col_idx] += action
 
-                                next_loss, next_accuracy = evaluate(next_neural_network, batch_inputs, batch_labels)
+                                next_loss, next_accuracy = evaluate(next_neural_network, batch_inputs, batch_labels, last_activation)
                                 frontier.append(Node(depth=node.depth + 1, neural_network=next_neural_network, loss=next_loss, accuracy=next_accuracy, parent=node))
 
                             n_params_updated += 1
@@ -87,7 +88,7 @@ def train(
         print(f'\nSolution {i + 1}:')
         print(f'Train: loss = {node.loss:.4f}, accuracy = {node.accuracy:.4f}, depth = {node.depth}')
 
-        test_loss, test_accuracy = evaluate(node.neural_network, test_inputs, test_labels)
+        test_loss, test_accuracy = evaluate(node.neural_network, test_inputs, test_labels, last_activation)
         print(f'--> Test: loss = {test_loss:.4f}, accuracy = {test_accuracy:.4f}')
 
         # save_neural_network(node.neural_network, f'./finals/a*_{dataset}_{time.time()}.txt')
@@ -144,7 +145,7 @@ class PriorityQueue:
     def __len__(self):
         return len(self.heap)
 
-def is_goal(node: Node, goal: float, inputs: np.ndarray, labels: np.ndarray, batch_size: int):
+def is_goal(node: Node, goal: float, inputs: np.ndarray, labels: np.ndarray, batch_size: int, last_activation: str):
     if node.accuracy < goal:
         return False
 
@@ -155,7 +156,7 @@ def is_goal(node: Node, goal: float, inputs: np.ndarray, labels: np.ndarray, bat
         batch_inputs = inputs[batch_idx * batch_size:(batch_idx + 1) * batch_size]
         batch_labels = labels[batch_idx * batch_size:(batch_idx + 1) * batch_size]
 
-        _, batch_accuracy = evaluate(node.neural_network, batch_inputs, batch_labels)
+        _, batch_accuracy = evaluate(node.neural_network, batch_inputs, batch_labels, last_activation)
         total_accuracy += batch_accuracy
 
     total_accuracy /= n_batches
@@ -167,8 +168,9 @@ def evaluate(
     neural_network: list[tuple[np.ndarray, np.ndarray]],
     inputs: np.ndarray,
     labels: np.ndarray,
+    last_activation: str,
 ) -> np.float64:
-    As, _ = forward(neural_network, inputs)
+    As, _ = forward(neural_network, inputs, last_activation)
     return cross_entropy_loss(labels, As[-1]), accuracy(labels, As[-1])
 
 def plot_accuracy_vs_depth(solution: Node, goal: float, dataset: str) -> None:
