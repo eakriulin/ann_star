@@ -11,11 +11,11 @@ To run the script, use the `main.py` file with various command-line arguments.
 Run A* algorithm on Iris dataset with k-fold cross-validation:
 
 ```zsh
-python main.py --algo=astar --k=5 --dataset=iris --arch=no --batch=60 --goal=97 --lact=relu
+python main.py --algo=astar --k=5 --stratified=0 --dataset=iris --arch=no --batch=60 --goal=97 --lact=relu
 ```
 
 Run backpropagation algorithm on Digits dataset without k-fold:
 
 ```zsh
-python main.py --algo=backprop --dataset=digits --arch=single --epochs=50000 --batch=1000 --lact=sigmoid
+python main.py --algo=backprop --stratified=1 --dataset=digits --arch=single --epochs=50000 --batch=1000 --lact=sigmoid
 ```
