@@ -28,9 +28,9 @@ def main():
 
     if k > 1:
         if args.algo == 'backprop':
-            kfold.eval(k, should_stratify, args.dataset, args.arch, initialization_method, backprop.train, learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, last_activation=args.lact)
+            kfold.eval(k, should_stratify, args.dataset, args.arch, initialization_method, args.algo, backprop.train, learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, last_activation=args.lact)
         elif args.algo == 'astar':
-            kfold.eval(k, should_stratify, args.dataset, args.arch, initialization_method, a_star.train, goal=goal, batch_size=batch_size, last_activation=args.lact, should_plot_accuracy_vs_depth=False)
+            kfold.eval(k, should_stratify, args.dataset, args.arch, initialization_method, args.algo, a_star.train, goal=goal, batch_size=batch_size, last_activation=args.lact, should_plot_accuracy_vs_depth=False)
     else:
         neural_network = nn.initialize(dataset=args.dataset, architecture_type=args.arch, method=initialization_method)
         train_inputs, train_labels, test_inputs, test_labels = data.get(dataset=args.dataset)

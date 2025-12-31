@@ -4,7 +4,7 @@ import numpy as np
 import data
 import nn
 
-def eval(k: int, should_stratify: bool, dataset: str, architecture_type: str, initialization_method: str, train_fn: typing.Callable, **kwargs):
+def eval(k: int, should_stratify: bool, dataset: str, architecture_type: str, initialization_method: str, algo: str, train_fn: typing.Callable, **kwargs):
     inputs, labels = data.get(dataset, should_split=False)
     dataset_size = len(inputs)
     
@@ -23,7 +23,6 @@ def eval(k: int, should_stratify: bool, dataset: str, architecture_type: str, in
 
         train_inputs = inputs[train_indices]
         train_labels = labels[train_indices]
-        unique, counts = np.unique(train_labels, return_counts=True)
 
         neural_network = nn.initialize(dataset, architecture_type, initialization_method)
         accuracy, loss, updated_params_count, train_time = train_fn(neural_network, train_inputs, train_labels, test_inputs, test_labels, dataset=dataset, **kwargs)
@@ -38,6 +37,21 @@ def eval(k: int, should_stratify: bool, dataset: str, architecture_type: str, in
     print(f'[Loss]: mean = {np.mean(losses):.4f}, std = {np.std(losses):.4f}')
     print(f'[# upd. parameters]: mean = {np.mean(updated_params_counts):.4f}, std = {np.std(updated_params_counts):.4f}')
     print(f'[Train time, sec]: mean = {np.mean(train_times):.4f}, std = {np.std(train_times):.4f}')
+
+    with open(f'./results_{algo}_{dataset}_{architecture_type}_{k}_folds.txt', 'w') as file:
+        file.write(f'DATASET = {dataset}, ARCHITECTURE TYPE = {architecture_type}, FOLDS = {k}\n\n')
+
+        file.write(f'RESULTS SUMMARY:\n')
+        file.write(f'[Accuracy]: mean = {np.mean(accuracies):.4f}, std = {np.std(accuracies):.4f}\n')
+        file.write(f'[Loss]: mean = {np.mean(losses):.4f}, std = {np.std(losses):.4f}\n')
+        file.write(f'[# upd. parameters]: mean = {np.mean(updated_params_counts):.4f}, std = {np.std(updated_params_counts):.4f}\n')
+        file.write(f'[Train time, sec]: mean = {np.mean(train_times):.4f}, std = {np.std(train_times):.4f}\n\n')
+
+        file.write(f'RESULTS PER FOLD:\n')
+        file.write(f'[Accuracies]: {list_to_string(accuracies)}\n')
+        file.write(f'[Losses]: {list_to_string(losses)}\n')
+        file.write(f'[# upd. parameters]: {list_to_string(updated_params_counts)}\n')
+        file.write(f'[Train time, sec]: {list_to_string(train_times)}\n')
 
 def get_folds(k: int, should_stratify: bool, labels: np.ndarray) -> list[tuple[np.ndarray, np.ndarray]]:
     if should_stratify:
@@ -78,3 +92,6 @@ def get_stratified_folds(k: int, labels: np.ndarray)  -> list[tuple[np.ndarray, 
         folds.append((train_indices, test_indices))
 
     return folds
+
+def list_to_string(l: list) -> str:
+    return ', '.join(map(lambda n: f'{n:.4f}', l))
