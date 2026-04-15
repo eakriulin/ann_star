@@ -3,37 +3,52 @@ import numpy as np
 def initialize(dataset: str, architecture_type: str, method: str) -> list[tuple[np.ndarray, np.ndarray]]:
     return {
         'iris': {
-            'no': [
+            '2': [
                 layer(n_features_in=4, n_features_out=3, method=method)
             ], 
-            'single': [
+            '3': [
                 layer(n_features_in=4, n_features_out=8, method=method),
                 layer(n_features_in=8, n_features_out=3, method=method)
-            ]
+            ],
+            '4': [
+                layer(n_features_in=4, n_features_out=16, method=method),
+                layer(n_features_in=16, n_features_out=8, method=method),
+                layer(n_features_in=8, n_features_out=3, method=method)
+            ],
         },
         'wine': {
-            'no': [
+            '2': [
                 layer(n_features_in=13, n_features_out=3, method=method),
             ],
-            'single': [
+            '3': [
                 layer(n_features_in=13, n_features_out=16, method=method),
                 layer(n_features_in=16, n_features_out=3, method=method),
-            ]
+            ],
+            '4': [
+                layer(n_features_in=13, n_features_out=32, method=method),
+                layer(n_features_in=32, n_features_out=16, method=method),
+                layer(n_features_in=16, n_features_out=3, method=method),
+            ],
         },
         'digits': {
-            'no': [
+            '2': [
                 layer(n_features_in=64, n_features_out=10, method=method),
             ],
-            'single': [
+            '3': [
                 layer(n_features_in=64, n_features_out=32, method=method),
                 layer(n_features_in=32, n_features_out=10, method=method),
-            ]
+            ],
+            '4': [
+                layer(n_features_in=64, n_features_out=64, method=method),
+                layer(n_features_in=64, n_features_out=32, method=method),
+                layer(n_features_in=32, n_features_out=10, method=method),
+            ],
         },
         'mnist': {
-            'no': [
+            '2': [
                 layer(n_features_in=784, n_features_out=10, method=method),
             ],
-            'single': [
+            '3': [
                 layer(n_features_in=784, n_features_out=128, method=method),
                 layer(n_features_in=128, n_features_out=10, method=method)
             ]

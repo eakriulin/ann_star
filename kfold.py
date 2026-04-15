@@ -3,6 +3,7 @@ import typing
 import numpy as np
 import data
 import nn
+import time
 
 def eval(k: int, should_stratify: bool, dataset: str, architecture_type: str, initialization_method: str, algo: str, train_fn: typing.Callable, **kwargs):
     inputs, labels = data.get(dataset, should_split=False)
@@ -38,8 +39,8 @@ def eval(k: int, should_stratify: bool, dataset: str, architecture_type: str, in
     print(f'[# upd. parameters]: mean = {np.mean(updated_params_counts):.4f}, std = {np.std(updated_params_counts):.4f}')
     print(f'[Train time, sec]: mean = {np.mean(train_times):.4f}, std = {np.std(train_times):.4f}')
 
-    with open(f'./results_{algo}_{dataset}_{architecture_type}_{k}_folds.txt', 'w') as file:
-        file.write(f'DATASET = {dataset}, ARCHITECTURE TYPE = {architecture_type}, FOLDS = {k}\n\n')
+    with open(f'./results_{algo}_{dataset}_l{architecture_type}_{k}folds_{time.time():.0f}.txt', 'w') as file:
+        file.write(f'DATASET = {dataset}, l = {architecture_type}, FOLDS = {k}\n\n')
 
         file.write(f'RESULTS SUMMARY:\n')
         file.write(f'[Accuracy]: mean = {np.mean(accuracies):.4f}, std = {np.std(accuracies):.4f}\n')
