@@ -24,6 +24,29 @@ def forward(
 
     return As, Zs
 
+def forward_mixture_of_experts(
+    mixture_of_experts: tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]],
+    inputs: np.ndarray,
+    last_activation: str,
+) -> tuple[np.ndarray, np.ndarray, list[list[np.ndarray]], list[list[np.ndarray]]]:
+    gater, experts = mixture_of_experts
+    W_gater, b_gater = gater[0]
+
+    gates = softmax(np.matmul(inputs, W_gater) + np.squeeze(b_gater))
+
+    experts_As = []
+    experts_Zs = []
+    for expert in experts:
+        expert_As, expert_Zs = forward(expert, inputs, last_activation)
+        experts_As.append(expert_As)
+        experts_Zs.append(expert_Zs)
+
+    predictions = np.zeros_like(experts_As[0][-1])
+    for expert_idx, expert_As in enumerate(experts_As):
+        predictions += gates[:, expert_idx:expert_idx + 1] * expert_As[-1]
+
+    return predictions, gates, experts_As, experts_Zs
+
 def relu(data: np.ndarray, as_derivative=False) -> np.ndarray:
     if as_derivative:
         return (data > 0).astype(np.float64)
@@ -35,6 +58,12 @@ def sigmoid(data: np.ndarray, as_derivative=False):
         return np.exp(-data) / ((1 + np.exp(-data)) ** 2)
     
     return 1 / (1 + np.exp(-data))
+
+def softmax(data: np.ndarray) -> np.ndarray:
+    shifted_data = data - np.max(data, axis=1, keepdims=True)
+    exponents = np.exp(shifted_data)
+
+    return exponents / np.sum(exponents, axis=1, keepdims=True)
 
 def cross_entropy_loss(labels: np.ndarray, predictions: np.ndarray, as_derivative=False) -> np.float64 | np.ndarray:
     is_binary = predictions.shape[1] == 1
@@ -68,6 +97,11 @@ def accuracy(labels: np.ndarray, predictions: np.ndarray) -> np.float64:
 
 def copy_neural_network(neural_network: list[tuple[np.ndarray, np.ndarray]]):
     return [(W.copy(), b.copy()) for W, b in neural_network]
+
+def copy_mixture_of_experts(mixture_of_experts: tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]]) -> tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]]:
+    gater, experts = mixture_of_experts
+
+    return copy_neural_network(gater), [copy_neural_network(expert) for expert in experts]
 
 def save_neural_network(neural_network: list[tuple[np.ndarray, np.ndarray]], filename: str):
     with open(filename, 'w') as f:
@@ -106,5 +140,27 @@ def count_updated_parameters(initial_neural_network: list[tuple[np.ndarray, np.n
                 for col_idx in range(len(neural_network[layer_idx][param_idx][row_idx])):
                     if initial_neural_network[layer_idx][param_idx][row_idx][col_idx] != neural_network[layer_idx][param_idx][row_idx][col_idx]:
                         n_params_updated += 1
+
+    return n_params_updated
+
+def count_mixture_of_experts_parameters(mixture_of_experts: tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]]) -> int:
+    gater, experts = mixture_of_experts
+    n_params = count_parameters(gater)
+
+    for expert in experts:
+        n_params += count_parameters(expert)
+
+    return n_params
+
+def count_mixture_of_experts_updated_parameters(
+    initial_mixture_of_experts: tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]],
+    mixture_of_experts: tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]],
+) -> int:
+    initial_gater, initial_experts = initial_mixture_of_experts
+    gater, experts = mixture_of_experts
+    n_params_updated = count_updated_parameters(initial_gater, gater)
+
+    for initial_expert, expert in zip(initial_experts, experts):
+        n_params_updated += count_updated_parameters(initial_expert, expert)
 
     return n_params_updated

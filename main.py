@@ -16,21 +16,33 @@ def main():
     parser.add_argument('--epochs', help='number of training epochs for backprop', default=1000)
     parser.add_argument('--goal', help='goal accuracy, e.g. 95', default=95)
     parser.add_argument('--lact', help='last activation; relu or sigmoid', default='relu')
+    parser.add_argument('--moe', help='should use mixture of experts, 0 or 1', default=0)
     args = parser.parse_args()
 
     k = int(args.k)
     should_stratify = bool(int(args.stratified))
+    should_use_mixture_of_experts = bool(int(args.moe))
     goal = int(args.goal) / 100
     batch_size = int(args.batch)
     n_epochs = int(args.epochs)
     learning_rate = 0.001
     initialization_method = 'he' if args.algo == 'backprop' else 'zeros'
 
+    if should_use_mixture_of_experts and args.algo != 'backprop':
+        raise Exception(f'Mixture of experts is not supported for algo — {args.algo}')
+
     if k > 1:
-        if args.algo == 'backprop':
-            kfold.eval(k, should_stratify, args.dataset, args.l, initialization_method, args.algo, backprop.train, learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, last_activation=args.lact)
+        if should_use_mixture_of_experts:
+            kfold.eval(k, should_stratify, args.dataset, args.l, initialization_method, args.algo, should_use_mixture_of_experts, backprop.train_mixture_of_experts, nn.initialize_mixture_of_experts, learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, last_activation=args.lact)
+        elif args.algo == 'backprop':
+            kfold.eval(k, should_stratify, args.dataset, args.l, initialization_method, args.algo, should_use_mixture_of_experts, backprop.train, nn.initialize, learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, last_activation=args.lact)
         elif args.algo == 'astar':
-            kfold.eval(k, should_stratify, args.dataset, args.l, initialization_method, args.algo, a_star.train, goal=goal, batch_size=batch_size, last_activation=args.lact, should_plot_accuracy_vs_depth=False)
+            kfold.eval(k, should_stratify, args.dataset, args.l, initialization_method, args.algo, should_use_mixture_of_experts, a_star.train, nn.initialize, goal=goal, batch_size=batch_size, last_activation=args.lact, should_plot_accuracy_vs_depth=False)
+    elif should_use_mixture_of_experts:
+        mixture_of_experts = nn.initialize_mixture_of_experts(dataset=args.dataset, architecture_type=args.l, method=initialization_method)
+        train_inputs, train_labels, test_inputs, test_labels = data.get(dataset=args.dataset)
+
+        backprop.train_mixture_of_experts(mixture_of_experts, train_inputs, train_labels, test_inputs, test_labels, learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, last_activation=args.lact, dataset=args.dataset)
     else:
         neural_network = nn.initialize(dataset=args.dataset, architecture_type=args.l, method=initialization_method)
         train_inputs, train_labels, test_inputs, test_labels = data.get(dataset=args.dataset)

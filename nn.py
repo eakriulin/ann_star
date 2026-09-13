@@ -64,6 +64,143 @@ def initialize(dataset: str, architecture_type: str, method: str) -> list[tuple[
         },
     }[dataset][architecture_type]
 
+def initialize_mixture_of_experts(dataset: str, architecture_type: str, method: str) -> tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]]:
+    return {
+        'iris': {
+            '2': mixture_of_experts(
+                n_features_in=4,
+                experts=[
+                    [
+                        layer(n_features_in=4, n_features_out=3, method=method),
+                    ],
+                    [
+                        layer(n_features_in=4, n_features_out=3, method=method),
+                    ],
+                    [
+                        layer(n_features_in=4, n_features_out=3, method=method),
+                    ],
+                ],
+                method=method,
+            ),
+        },
+        'wine': {
+            '2': mixture_of_experts(
+                n_features_in=13,
+                experts=[
+                    [
+                        layer(n_features_in=13, n_features_out=3, method=method),
+                    ],
+                    [
+                        layer(n_features_in=13, n_features_out=3, method=method),
+                    ],
+                    [
+                        layer(n_features_in=13, n_features_out=3, method=method),
+                    ],
+                ],
+                method=method,
+            ),
+        },
+        'digits': {
+            '2': mixture_of_experts(
+                n_features_in=64,
+                experts=[
+                    [
+                        layer(n_features_in=64, n_features_out=10, method=method),
+                    ],
+                    [
+                        layer(n_features_in=64, n_features_out=10, method=method),
+                    ],
+                    [
+                        layer(n_features_in=64, n_features_out=10, method=method),
+                    ],
+                ],
+                method=method,
+            ),
+        },
+        'stripes2': {
+            '2': mixture_of_experts(
+                n_features_in=2,
+                experts=[
+                    [
+                        layer(n_features_in=2, n_features_out=1, method=method),
+                    ],
+                    [
+                        layer(n_features_in=2, n_features_out=1, method=method),
+                    ],
+                    [
+                        layer(n_features_in=2, n_features_out=1, method=method),
+                    ],
+                ],
+                method=method
+            ),
+            '3': mixture_of_experts(
+                n_features_in=2,
+                experts=[
+                    [
+                        layer(n_features_in=2, n_features_out=3, method=method),
+                        layer(n_features_in=3, n_features_out=1, method=method),
+                    ],
+                    [
+                        layer(n_features_in=2, n_features_out=3, method=method),
+                        layer(n_features_in=3, n_features_out=1, method=method),
+                    ],
+                    [
+                        layer(n_features_in=2, n_features_out=3, method=method),
+                        layer(n_features_in=3, n_features_out=1, method=method),
+                    ],
+                ],
+                method=method
+            ),
+        },
+        'stripes3': {
+            '2': mixture_of_experts(
+                n_features_in=2,
+                experts=[
+                    [
+                        layer(n_features_in=2, n_features_out=3, method=method),
+                    ],
+                    [
+                        layer(n_features_in=2, n_features_out=3, method=method),
+                    ],
+                    [
+                        layer(n_features_in=2, n_features_out=3, method=method),
+                    ],
+                ],
+                method=method
+            ),
+            '3': mixture_of_experts(
+                n_features_in=2,
+                experts=[
+                    [
+                        layer(n_features_in=2, n_features_out=5, method=method),
+                        layer(n_features_in=5, n_features_out=3, method=method),
+                    ],
+                    [
+                        layer(n_features_in=2, n_features_out=5, method=method),
+                        layer(n_features_in=5, n_features_out=3, method=method),
+                    ],
+                    [
+                        layer(n_features_in=2, n_features_out=5, method=method),
+                        layer(n_features_in=5, n_features_out=3, method=method),
+                    ],
+                ],
+                method=method
+            ),
+        }
+    }[dataset][architecture_type]
+
+def mixture_of_experts(
+    n_features_in: int,
+    experts: list[list[tuple[np.ndarray, np.ndarray]]],
+    method: str
+) -> tuple[
+    list[tuple[np.ndarray, np.ndarray]],
+    list[list[tuple[np.ndarray, np.ndarray]]]
+]:
+    gater = [layer(n_features_in=n_features_in, n_features_out=len(experts), method=method)]
+
+    return gater, experts
+
 def layer(n_features_in: int, n_features_out: int, method: str) -> tuple[np.ndarray, np.ndarray]:
     if method == 'zeros':
         W = np.zeros((n_features_in, n_features_out))
