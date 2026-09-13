@@ -1,6 +1,6 @@
-from calendar import day_abbr
 import os
 import numpy as np
+from gen.stripes_dataset import generate_stripes_dataset
 
 def get(dataset: str, should_split: bool = True)  -> tuple:
     if dataset == 'iris':
@@ -11,9 +11,12 @@ def get(dataset: str, should_split: bool = True)  -> tuple:
 
     if dataset == 'digits':
         return get_digits(should_split)
-    
-    if dataset == 'mnist':
-        return get_mnist(should_split)
+
+    if dataset == 'stripes2':
+        return get_stripes(should_split, 2)
+
+    if dataset == 'stripes3':
+        return get_stripes(should_split, 3)
 
     raise Exception(f'Unknown dataset — {dataset}')
 
@@ -45,7 +48,7 @@ def get_wine(should_split: bool = True) -> tuple:
 
     return inputs, labels
 
-def get_digits(should_split: bool = True)  -> tuple:
+def get_digits(should_split: bool = True) -> tuple:
     train_data = np.loadtxt(os.path.join('datasets', 'digits', 'optdigits.tra'), dtype=np.float64, delimiter=',')
     test_data = np.loadtxt(os.path.join('datasets', 'digits', 'optdigits.tes'), dtype=np.float64, delimiter=',')
 
@@ -71,29 +74,26 @@ def get_digits(should_split: bool = True)  -> tuple:
 
     return inputs, labels
 
-def get_mnist(should_split: bool = True)  -> tuple:
-    train_data = np.loadtxt(os.path.join('datasets', 'mnist', 'mnist_train.csv'), dtype=np.float64, delimiter=',')
-    test_data = np.loadtxt(os.path.join('datasets', 'mnist', 'mnist_test.csv'), dtype=np.float64, delimiter=',')
+def get_stripes(should_split: bool = True, n_classes: int = 2) -> tuple:
+    stripes_per_class = 2
+    n_samples = n_classes * 200
+    weights = [1 / n_classes for _ in range(n_classes)]
 
-    train_inputs = train_data[:, 1:] / 255.0
-    train_labels = train_data[:, 0].reshape(len(train_data), 1).astype(int)
+    inputs, labels = generate_stripes_dataset(
+        n_classes=n_classes,
+        n_samples=n_samples,
+        weights=weights,
+        stripe_spacing=1.0,
+        stripe_spread=0.25,
+        stripes_per_class=stripes_per_class,
+        seed=42,
+    )
 
-    test_inputs = test_data[:, 1:] / 255.0
-    test_labels = test_data[:, 0].reshape(len(test_data), 1).astype(int)
+    inputs = standardize(inputs)
+    labels = labels.reshape(len(labels), 1).astype(int)
 
     if should_split:
-        train_indices = np.random.permutation(len(train_inputs))
-        train_inputs = train_inputs[train_indices]
-        train_labels = train_labels[train_indices]
-
-        test_indices = np.random.permutation(len(test_inputs))
-        test_inputs = test_inputs[test_indices]
-        test_labels = test_labels[test_indices]
-
-        return train_inputs, train_labels, test_inputs, test_labels
-
-    inputs = np.concat([train_inputs, test_inputs])
-    labels = np.concat([train_labels, test_labels])
+        return split(inputs, labels)
 
     return inputs, labels
 

@@ -44,14 +44,23 @@ def initialize(dataset: str, architecture_type: str, method: str) -> list[tuple[
                 layer(n_features_in=32, n_features_out=10, method=method),
             ],
         },
-        'mnist': {
+        'stripes2': {
             '2': [
-                layer(n_features_in=784, n_features_out=10, method=method),
+                layer(n_features_in=2, n_features_out=1, method=method),
             ],
             '3': [
-                layer(n_features_in=784, n_features_out=128, method=method),
-                layer(n_features_in=128, n_features_out=10, method=method)
-            ]
+                layer(n_features_in=2, n_features_out=3, method=method),
+                layer(n_features_in=3, n_features_out=1, method=method),
+            ],
+        },
+        'stripes3': {
+            '2': [
+                layer(n_features_in=2, n_features_out=3, method=method),
+            ],
+            '3': [
+                layer(n_features_in=2, n_features_out=5, method=method),
+                layer(n_features_in=5, n_features_out=3, method=method),
+            ],
         },
     }[dataset][architecture_type]
 

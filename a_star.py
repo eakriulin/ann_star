@@ -37,12 +37,12 @@ def train(
         """
 
         d = 0.5
-        l = 0.2
-        a = 0.3
+        l = 0.05
+        a = 0.45
 
         return d * (node.depth / n_params) + l * node.loss + a * (1 - node.accuracy)
 
-    frontier = PriorityQueue(f=cost_fn, max_size=1000)
+    frontier = PriorityQueue(f=cost_fn, max_size=10000)
     frontier.append(Node(depth=0, neural_network=neural_network, loss=0, accuracy=0, parent=None))
 
     print('Training...\n')

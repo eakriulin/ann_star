@@ -10,7 +10,7 @@ def main():
     parser.add_argument('--algo', help='training algorithm; astar or backprop', default='astar')
     parser.add_argument('--k', help='number of folds for k-fold cross validation', default=0)
     parser.add_argument('--stratified', help='should make stratified folds, 0 or 1', default=0)
-    parser.add_argument('--dataset', help='dataset name; iris, wine or digits', default='iris')
+    parser.add_argument('--dataset', help='dataset name; iris, wine, digits, stripes2 or stripes3', default='iris')
     parser.add_argument('--l', help='architecture type; 2, 3 or 4', default='2')
     parser.add_argument('--batch', help='batch size', default=100)
     parser.add_argument('--epochs', help='number of training epochs for backprop', default=1000)

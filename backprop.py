@@ -31,7 +31,7 @@ def train(
             batch_As, batch_Zs = forward(neural_network, batch_inputs, last_activation)
             batch_loss = cross_entropy_loss(batch_labels, batch_As[-1])
 
-            batch_loss_derivative = cross_entropy_loss(batch_labels, batch_Zs[-1], as_derivative=True)
+            batch_loss_derivative = cross_entropy_loss(batch_labels, batch_As[-1], as_derivative=True)
             gradients = backward(neural_network, batch_inputs, batch_As, batch_Zs, batch_loss_derivative, last_activation)
             update_parameters(neural_network, gradients, learning_rate)
 
