@@ -161,10 +161,7 @@ def initialize_mixture_of_experts(dataset: str, architecture_type: str, method: 
                     ],
                     [
                         layer(n_features_in=2, n_features_out=3, method=method),
-                    ],
-                    [
-                        layer(n_features_in=2, n_features_out=3, method=method),
-                    ],
+                    ]
                 ],
                 method=method
             ),

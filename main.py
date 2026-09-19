@@ -28,29 +28,34 @@ def main():
     learning_rate = 0.001
     initialization_method = 'he' if args.algo == 'backprop' else 'zeros'
 
-    if should_use_mixture_of_experts and args.algo != 'backprop':
-        raise Exception(f'Mixture of experts is not supported for algo — {args.algo}')
-
     if k > 1:
         if should_use_mixture_of_experts:
-            kfold.eval(k, should_stratify, args.dataset, args.l, initialization_method, args.algo, should_use_mixture_of_experts, backprop.train_mixture_of_experts, nn.initialize_mixture_of_experts, learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, last_activation=args.lact)
-        elif args.algo == 'backprop':
-            kfold.eval(k, should_stratify, args.dataset, args.l, initialization_method, args.algo, should_use_mixture_of_experts, backprop.train, nn.initialize, learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, last_activation=args.lact)
-        elif args.algo == 'astar':
-            kfold.eval(k, should_stratify, args.dataset, args.l, initialization_method, args.algo, should_use_mixture_of_experts, a_star.train, nn.initialize, goal=goal, batch_size=batch_size, last_activation=args.lact, should_plot_accuracy_vs_depth=False)
-    elif should_use_mixture_of_experts:
-        mixture_of_experts = nn.initialize_mixture_of_experts(dataset=args.dataset, architecture_type=args.l, method=initialization_method)
-        train_inputs, train_labels, test_inputs, test_labels = data.get(dataset=args.dataset)
-
-        backprop.train_mixture_of_experts(mixture_of_experts, train_inputs, train_labels, test_inputs, test_labels, learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, last_activation=args.lact, dataset=args.dataset)
+            if args.algo == 'backprop':
+                kfold.eval(k, should_stratify, args.dataset, args.l, initialization_method, args.algo, should_use_mixture_of_experts, backprop.train_mixture_of_experts, nn.initialize_mixture_of_experts, learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, last_activation=args.lact)
+            elif args.algo == 'astar':
+                kfold.eval(k, should_stratify, args.dataset, args.l, initialization_method, args.algo, should_use_mixture_of_experts, a_star.train_mixture_of_experts, nn.initialize_mixture_of_experts, goal=goal, batch_size=batch_size, last_activation=args.lact, should_plot_accuracy_vs_depth=False)
+        else:
+            if args.algo == 'backprop':
+                kfold.eval(k, should_stratify, args.dataset, args.l, initialization_method, args.algo, should_use_mixture_of_experts, backprop.train, nn.initialize, learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, last_activation=args.lact)
+            elif args.algo == 'astar':
+                kfold.eval(k, should_stratify, args.dataset, args.l, initialization_method, args.algo, should_use_mixture_of_experts, a_star.train, nn.initialize, goal=goal, batch_size=batch_size, last_activation=args.lact, should_plot_accuracy_vs_depth=False)
     else:
-        neural_network = nn.initialize(dataset=args.dataset, architecture_type=args.l, method=initialization_method)
-        train_inputs, train_labels, test_inputs, test_labels = data.get(dataset=args.dataset)
+        if should_use_mixture_of_experts:
+            mixture_of_experts = nn.initialize_mixture_of_experts(dataset=args.dataset, architecture_type=args.l, method=initialization_method)
+            train_inputs, train_labels, test_inputs, test_labels = data.get(dataset=args.dataset)
 
-        if args.algo == 'backprop':
-            backprop.train(neural_network, train_inputs, train_labels, test_inputs, test_labels, learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, last_activation=args.lact, dataset=args.dataset)
-        elif args.algo == 'astar':
-            a_star.train(neural_network, train_inputs, train_labels, test_inputs, test_labels, goal=goal, batch_size=batch_size, dataset=args.dataset, last_activation=args.lact, should_plot_accuracy_vs_depth=True)
+            if args.algo == 'backprop':
+                backprop.train_mixture_of_experts(mixture_of_experts, train_inputs, train_labels, test_inputs, test_labels, learning_rate, batch_size, n_epochs, last_activation=args.lact, dataset=args.dataset)
+            elif args.algo == 'astar':
+                a_star.train_mixture_of_experts(mixture_of_experts, train_inputs, train_labels, test_inputs, test_labels, goal, batch_size, dataset=args.dataset, last_activation=args.lact, should_plot_accuracy_vs_depth=True)
+        else:
+            neural_network = nn.initialize(dataset=args.dataset, architecture_type=args.l, method=initialization_method)
+            train_inputs, train_labels, test_inputs, test_labels = data.get(dataset=args.dataset)
+
+            if args.algo == 'backprop':
+                backprop.train(neural_network, train_inputs, train_labels, test_inputs, test_labels, learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, last_activation=args.lact, dataset=args.dataset)
+            elif args.algo == 'astar':
+                a_star.train(neural_network, train_inputs, train_labels, test_inputs, test_labels, goal=goal, batch_size=batch_size, dataset=args.dataset, last_activation=args.lact, should_plot_accuracy_vs_depth=True)
 
 if __name__ == '__main__':
     main()
