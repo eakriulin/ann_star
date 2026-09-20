@@ -1,7 +1,11 @@
 import numpy as np
+from models import Model, MLP, MoE, Layer
 
-def initialize(dataset: str, architecture_type: str, method: str) -> list[tuple[np.ndarray, np.ndarray]]:
-    return {
+def initialize(dataset: str, architecture_type: str, method: str, last_activation: str, model_type: str) -> Model:
+    return builders[model_type](dataset, architecture_type, method, last_activation)
+
+def initialize_mlp(dataset: str, architecture_type: str, method: str, last_activation: str) -> MLP:
+    layers = {
         'iris': {
             '2': [
                 layer(n_features_in=4, n_features_out=3, method=method)
@@ -64,8 +68,10 @@ def initialize(dataset: str, architecture_type: str, method: str) -> list[tuple[
         },
     }[dataset][architecture_type]
 
-def initialize_mixture_of_experts(dataset: str, architecture_type: str, method: str) -> tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]]:
-    return {
+    return MLP(layers, last_activation)
+
+def initialize_mixture_of_experts(dataset: str, architecture_type: str, method: str, last_activation: str) -> MoE:
+    gater, experts = {
         'iris': {
             '2': mixture_of_experts(
                 n_features_in=4,
@@ -186,19 +192,18 @@ def initialize_mixture_of_experts(dataset: str, architecture_type: str, method: 
         }
     }[dataset][architecture_type]
 
+    return MoE(gater, [MLP(expert, last_activation) for expert in experts])
+
 def mixture_of_experts(
     n_features_in: int,
-    experts: list[list[tuple[np.ndarray, np.ndarray]]],
+    experts: list[list[Layer]],
     method: str
-) -> tuple[
-    list[tuple[np.ndarray, np.ndarray]],
-    list[list[tuple[np.ndarray, np.ndarray]]]
-]:
-    gater = [layer(n_features_in=n_features_in, n_features_out=len(experts), method=method)]
+) -> tuple[Layer, list[list[Layer]]]:
+    gater = layer(n_features_in=n_features_in, n_features_out=len(experts), method=method)
 
     return gater, experts
 
-def layer(n_features_in: int, n_features_out: int, method: str) -> tuple[np.ndarray, np.ndarray]:
+def layer(n_features_in: int, n_features_out: int, method: str) -> Layer:
     if method == 'zeros':
         W = np.zeros((n_features_in, n_features_out))
         b = np.zeros((n_features_out, 1))
@@ -208,3 +213,8 @@ def layer(n_features_in: int, n_features_out: int, method: str) -> tuple[np.ndar
         b = np.zeros((n_features_out, 1))
 
     return W, b
+
+builders = {
+    MLP.model_type: initialize_mlp,
+    MoE.model_type: initialize_mixture_of_experts,
+}

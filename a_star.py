@@ -3,10 +3,11 @@ import heapq
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Any, Callable
-from shared import forward, forward_mixture_of_experts, accuracy, cross_entropy_loss, copy_neural_network, copy_mixture_of_experts, count_parameters, count_mixture_of_experts_parameters, count_updated_parameters, count_mixture_of_experts_updated_parameters
+from models import Model
+from shared import evaluate, count_parameters, count_updated_parameters
 
 def train(
-    neural_network: list[tuple[np.ndarray, np.ndarray]],
+    model: Model,
     train_inputs: np.ndarray,
     train_labels: np.ndarray,
     test_inputs: np.ndarray,
@@ -14,21 +15,20 @@ def train(
     goal: float,
     batch_size: int,
     dataset: str,
-    last_activation: str,
     should_plot_accuracy_vs_depth: bool,
-) -> tuple[float, float]:
+) -> tuple[float, float, int, float]:
     start_time = time.time()
 
-    initial_neural_network = copy_neural_network(neural_network)
+    initial_model = model.copy()
     
-    n_params = count_parameters(neural_network)
+    n_params = count_parameters(model)
     n_params_to_update = 200
     n_solutions = 1
 
     actions = [0.001, -0.001]
-    solutions: list[NodeNN] = []
+    solutions: list[Node] = []
 
-    def cost_fn(node: NodeNN):
+    def cost_fn(node: Node):
         """
         Computes the cost associated with a given node based on its depth, loss, and accuracy.
         - Depth-based cost: Penalizes deeper nodes relative to the total number of parameters.
@@ -43,7 +43,7 @@ def train(
         return d * (node.depth / n_params) + l * node.loss + a * (1 - node.accuracy)
 
     frontier = PriorityQueue(f=cost_fn, max_size=10000)
-    frontier.append(NodeNN(neural_network=neural_network, depth=0, loss=0, accuracy=0, parent=None))
+    frontier.append(Node(model=model, depth=0, loss=0, accuracy=0, parent=None))
 
     print('Training...\n')
 
@@ -51,108 +51,10 @@ def train(
     while len(frontier) > 0:
         i += 1
 
-        node: NodeNN = frontier.pop()
+        node: Node = frontier.pop()
         print(f'\t{i}: loss = {node.loss:.4f}, accuracy = {node.accuracy:.4f}, depth = {node.depth}')
 
-        if is_goal(node, goal, train_inputs, train_labels, batch_size, last_activation):
-            solutions.append(node)
-            if len(solutions) == n_solutions:
-                break
-
-        def optimize():
-            # note: optimizing for a random batch
-            batch_idx = np.random.randint(0, len(train_inputs) // batch_size)
-            batch_inputs = train_inputs[batch_idx * batch_size:(batch_idx + 1) * batch_size]
-            batch_labels = train_labels[batch_idx * batch_size:(batch_idx + 1) * batch_size]
-            
-            # note: optimizing random portion of the neural network
-            n_params_updated = 0
-            for layer_idx in np.random.permutation(len(neural_network)):
-                for param_idx in np.random.permutation(len(neural_network[layer_idx])):
-                    for row_idx in np.random.permutation(len(neural_network[layer_idx][param_idx])):
-                        for col_idx in np.random.permutation(len(neural_network[layer_idx][param_idx][row_idx])):
-                            for action in actions:
-                                next_neural_network = copy_neural_network(node.neural_network)
-                                next_neural_network[layer_idx][param_idx][row_idx][col_idx] += action
-
-                                next_loss, next_accuracy = evaluate(next_neural_network, batch_inputs, batch_labels, last_activation)
-                                frontier.append(NodeNN(neural_network=next_neural_network, depth=node.depth + 1, loss=next_loss, accuracy=next_accuracy, parent=node))
-
-                            n_params_updated += 1
-                            if n_params_updated == n_params_to_update:
-                                return
-        
-        optimize()
-
-    train_time = time.time() - start_time
-
-    for i, node in enumerate(solutions):
-        print(f'\nSolution {i + 1}:')
-        print(f'Train: loss = {node.loss:.4f}, accuracy = {node.accuracy:.4f}, depth = {node.depth}')
-
-        test_loss, test_accuracy = evaluate(node.neural_network, test_inputs, test_labels, last_activation)
-        print(f'--> Test: loss = {test_loss:.4f}, accuracy = {test_accuracy:.4f}')
-
-        updated_params_count = count_updated_parameters(initial_neural_network, node.neural_network)
-        print(f'Updated {updated_params_count} parameters out of {count_parameters(neural_network)}')
-
-    print(f'Train time, sec = {train_time:.2f}')
-
-    if should_plot_accuracy_vs_depth:
-        plot_accuracy_vs_depth(solutions[0], goal, dataset, is_mixture_of_experts=False)
-
-    return test_accuracy, test_loss, updated_params_count, train_time
-
-def train_mixture_of_experts(
-    mixture_of_experts: tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]],
-    train_inputs: np.ndarray,
-    train_labels: np.ndarray,
-    test_inputs: np.ndarray,
-    test_labels: np.ndarray,
-    goal: float,
-    batch_size: int,
-    dataset: str,
-    last_activation: str,
-    should_plot_accuracy_vs_depth: bool,
-):
-    start_time = time.time()
-    
-    initial_mixture_of_experts = copy_mixture_of_experts(mixture_of_experts)
-    
-    n_params = count_mixture_of_experts_parameters(mixture_of_experts)
-    n_params_to_update = 200
-    n_solutions = 1
-
-    actions = [0.001, -0.001]
-    solutions: list[NodeMoE] = []
-
-    def cost_fn(node: NodeMoE):
-        """
-        Computes the cost associated with a given node based on its depth, loss, and accuracy.
-        - Depth-based cost: Penalizes deeper nodes relative to the total number of parameters.
-        - Loss-based cost: Penalizes nodes with higher loss values.
-        - Accuracy-based cost: Penalizes nodes with lower accuracy.
-        """
-
-        d = 0.5
-        l = 0.05
-        a = 0.45
-
-        return d * (node.depth / n_params) + l * node.loss + a * (1 - node.accuracy)
-
-    frontier = PriorityQueue(f=cost_fn, max_size=10000)
-    frontier.append(NodeMoE(mixture_of_experts=mixture_of_experts, depth=0, loss=0, accuracy=0, parent=None))
-
-    print('Training...\n')
-
-    i = 0
-    while len(frontier) > 0:
-        i += 1
-
-        node: NodeMoE = frontier.pop()
-        print(f'\t{i}: loss = {node.loss:.4f}, accuracy = {node.accuracy:.4f}, depth = {node.depth}')
-
-        if is_goal_mixture_of_experts(node, goal, train_inputs, train_labels, batch_size, last_activation):
+        if is_goal(node, goal, train_inputs, train_labels, batch_size):
             solutions.append(node)
             if len(solutions) == n_solutions:
                 break
@@ -163,28 +65,22 @@ def train_mixture_of_experts(
             batch_inputs = train_inputs[batch_idx * batch_size:(batch_idx + 1) * batch_size]
             batch_labels = train_labels[batch_idx * batch_size:(batch_idx + 1) * batch_size]
 
-            gater, experts = node.mixture_of_experts
-            neural_networks = [gater, *experts]
+            params = node.model.parameters()
             
             # note: optimizing random portion of the neural network
             n_params_updated = 0
-            for neural_network_idx in np.random.permutation(len(neural_networks)):
-                for layer_idx in np.random.permutation(len(neural_networks[neural_network_idx])):
-                    for param_idx in np.random.permutation(len(neural_networks[neural_network_idx][layer_idx])):
-                        for row_idx in np.random.permutation(len(neural_networks[neural_network_idx][layer_idx][param_idx])):
-                            for col_idx in np.random.permutation(len(neural_networks[neural_network_idx][layer_idx][param_idx][row_idx])):
-                                for action in actions:
-                                    next_gater, next_experts = copy_mixture_of_experts(node.mixture_of_experts)
-                                    next_neural_networks = [next_gater, *next_experts]
-                                    next_neural_networks[neural_network_idx][layer_idx][param_idx][row_idx][col_idx] += action
-                                    next_mixture_of_experts = (next_neural_networks[0], next_neural_networks[1:])
+            for tensor_idx in np.random.permutation(len(params)):
+                for param_idx in np.random.permutation(params[tensor_idx].size):
+                    for action in actions:
+                        next_model = node.model.copy()
+                        next_model.parameters()[tensor_idx].flat[param_idx] += action
 
-                                    next_loss, next_accuracy = evaluate_mixture_of_experts(next_mixture_of_experts, batch_inputs, batch_labels, last_activation)
-                                    frontier.append(NodeMoE(mixture_of_experts=next_mixture_of_experts, depth=node.depth + 1, loss=next_loss, accuracy=next_accuracy, parent=node))
+                        next_loss, next_accuracy = evaluate(next_model, batch_inputs, batch_labels)
+                        frontier.append(Node(model=next_model, depth=node.depth + 1, loss=next_loss, accuracy=next_accuracy, parent=node))
 
-                                n_params_updated += 1
-                                if n_params_updated == n_params_to_update:
-                                    return
+                    n_params_updated += 1
+                    if n_params_updated == n_params_to_update:
+                        return
         
         optimize()
 
@@ -194,21 +90,22 @@ def train_mixture_of_experts(
         print(f'\nSolution {i + 1}:')
         print(f'Train: loss = {node.loss:.4f}, accuracy = {node.accuracy:.4f}, depth = {node.depth}')
 
-        test_loss, test_accuracy = evaluate_mixture_of_experts(node.mixture_of_experts, test_inputs, test_labels, last_activation)
+        test_loss, test_accuracy = evaluate(node.model, test_inputs, test_labels)
         print(f'--> Test: loss = {test_loss:.4f}, accuracy = {test_accuracy:.4f}')
 
-        updated_params_count = count_mixture_of_experts_updated_parameters(initial_mixture_of_experts, node.mixture_of_experts)
+        updated_params_count = count_updated_parameters(initial_model, node.model)
         print(f'Updated {updated_params_count} parameters out of {n_params}')
 
     print(f'Train time, sec = {train_time:.2f}')
 
     if should_plot_accuracy_vs_depth:
-        plot_accuracy_vs_depth(solutions[0], goal, dataset, is_mixture_of_experts=True)
+        plot_accuracy_vs_depth(solutions[0], goal, dataset, model.model_type)
 
     return test_accuracy, test_loss, updated_params_count, train_time
 
 class Node:
-    def __init__(self, depth: int, loss: float, accuracy: float, parent = None):
+    def __init__(self, model: Model, depth: int, loss: float, accuracy: float, parent = None):
+        self.model = model # note: represents current state of the search
         self.depth = depth
         self.loss = loss
         self.accuracy = accuracy
@@ -217,7 +114,7 @@ class Node:
     def __lt__(self, other) -> bool:
         return self.accuracy < other.accuracy
 
-    def __lr__(self, other) -> bool:
+    def __le__(self, other) -> bool:
         return self.accuracy <= other.accuracy
 
     def __gt__(self, other) -> bool:
@@ -226,32 +123,6 @@ class Node:
     def __ge__(self, other) -> bool:
         return self.accuracy >= other.accuracy
 
-class NodeNN(Node):
-    def __init__(
-        self,
-        neural_network: list[tuple[np.ndarray, np.ndarray]],
-        depth: int,
-        loss: float,
-        accuracy: float,
-        parent = None,
-    ):
-        self.neural_network = neural_network # note: represents current state of the search
-
-        super().__init__(depth, loss, accuracy, parent)
-
-class NodeMoE(Node):
-    def __init__(
-        self,
-        mixture_of_experts: tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]],
-        depth: int,
-        loss: float,
-        accuracy: float,
-        parent = None
-    ):
-        self.mixture_of_experts = mixture_of_experts # note: represents current state of the search
-
-        super().__init__(depth, loss, accuracy, parent)
-    
 class PriorityQueue:
     def __init__(self, f: Callable, max_size: int):
         self.heap = []
@@ -276,7 +147,7 @@ class PriorityQueue:
     def __len__(self):
         return len(self.heap)
 
-def is_goal(node: NodeNN, goal: float, inputs: np.ndarray, labels: np.ndarray, batch_size: int, last_activation: str):
+def is_goal(node: Node, goal: float, inputs: np.ndarray, labels: np.ndarray, batch_size: int):
     if node.accuracy < goal:
         return False
 
@@ -287,7 +158,7 @@ def is_goal(node: NodeNN, goal: float, inputs: np.ndarray, labels: np.ndarray, b
         batch_inputs = inputs[batch_idx * batch_size:(batch_idx + 1) * batch_size]
         batch_labels = labels[batch_idx * batch_size:(batch_idx + 1) * batch_size]
 
-        _, batch_accuracy = evaluate(node.neural_network, batch_inputs, batch_labels, last_activation)
+        _, batch_accuracy = evaluate(node.model, batch_inputs, batch_labels)
         total_accuracy += batch_accuracy
 
     total_accuracy /= n_batches
@@ -295,45 +166,7 @@ def is_goal(node: NodeNN, goal: float, inputs: np.ndarray, labels: np.ndarray, b
 
     return total_accuracy >= goal
 
-def evaluate(
-    neural_network: list[tuple[np.ndarray, np.ndarray]],
-    inputs: np.ndarray,
-    labels: np.ndarray,
-    last_activation: str,
-) -> np.float64:
-    As, _ = forward(neural_network, inputs, last_activation)
-    return cross_entropy_loss(labels, As[-1]), accuracy(labels, As[-1])
-
-def is_goal_mixture_of_experts(node: NodeMoE, goal: float, inputs: np.ndarray, labels: np.ndarray, batch_size: int, last_activation: str):
-    if node.accuracy < goal:
-        return False
-
-    n_batches = len(inputs) // batch_size
-    total_accuracy = 0.0
-
-    for batch_idx in np.random.permutation(n_batches):
-        batch_inputs = inputs[batch_idx * batch_size:(batch_idx + 1) * batch_size]
-        batch_labels = labels[batch_idx * batch_size:(batch_idx + 1) * batch_size]
-
-        _, batch_accuracy = evaluate_mixture_of_experts(node.mixture_of_experts, batch_inputs, batch_labels, last_activation)
-        total_accuracy += batch_accuracy
-
-    total_accuracy /= n_batches
-    print(f'\t🎯 evaluated accuracy = {total_accuracy:.4f}')
-
-    return total_accuracy >= goal
-
-def evaluate_mixture_of_experts(
-    mixture_of_experts: tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]],
-    inputs: np.ndarray,
-    labels: np.ndarray,
-    last_activation: str,
-) -> np.float64:
-    predictions, _, _, _ = forward_mixture_of_experts(mixture_of_experts, inputs, last_activation)
-    return cross_entropy_loss(labels, predictions), accuracy(labels, predictions)
-
-
-def plot_accuracy_vs_depth(solution: Node, goal: float, dataset: str, is_mixture_of_experts: bool) -> None:
+def plot_accuracy_vs_depth(solution: Node, goal: float, dataset: str, model_type: str) -> None:
     current = solution
     accuracy_per_depth: dict = {}
 
@@ -355,4 +188,4 @@ def plot_accuracy_vs_depth(solution: Node, goal: float, dataset: str, is_mixture
     plt.axhline(y=goal, color='r', linestyle='--', label=f'Goal Accuracy: {goal}')
     plt.legend()
     
-    plt.savefig(f'./accuracy_vs_depth_{'moe_' if is_mixture_of_experts else ''}{dataset}_{time.time()}.png')
+    plt.savefig(f'./accuracy_vs_depth_{model_type}_{dataset}_{time.time()}.png')

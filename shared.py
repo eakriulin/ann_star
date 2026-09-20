@@ -2,51 +2,6 @@ import numpy as np
 
 np.seterr(divide='ignore')
 
-def forward(
-    neural_network: list[tuple[np.ndarray, np.ndarray]],
-    inputs: np.ndarray,
-    last_activation: str,
-) -> tuple[list[np.ndarray], list[np.ndarray]]:
-    n_layers = len(neural_network)
-    last_layer_idx = n_layers - 1
-
-    Zs = [None] * n_layers # note: layer input x layer weights + bias
-    As = [None] * n_layers # note: layer activations
-
-    last_activation = sigmoid if last_activation == 'sigmoid' else relu
-
-    for l in range(0, n_layers):
-        W, b = neural_network[l]
-        layer_input = inputs if l == 0 else As[l - 1]
-
-        Zs[l] = np.matmul(layer_input, W) + np.squeeze(b)
-        As[l] = last_activation(Zs[l]) if l == last_layer_idx else relu(Zs[l])
-
-    return As, Zs
-
-def forward_mixture_of_experts(
-    mixture_of_experts: tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]],
-    inputs: np.ndarray,
-    last_activation: str,
-) -> tuple[np.ndarray, np.ndarray, list[list[np.ndarray]], list[list[np.ndarray]]]:
-    gater, experts = mixture_of_experts
-    W_gater, b_gater = gater[0]
-
-    gates = softmax(np.matmul(inputs, W_gater) + np.squeeze(b_gater))
-
-    experts_As = []
-    experts_Zs = []
-    for expert in experts:
-        expert_As, expert_Zs = forward(expert, inputs, last_activation)
-        experts_As.append(expert_As)
-        experts_Zs.append(expert_Zs)
-
-    predictions = np.zeros_like(experts_As[0][-1])
-    for expert_idx, expert_As in enumerate(experts_As):
-        predictions += gates[:, expert_idx:expert_idx + 1] * expert_As[-1]
-
-    return predictions, gates, experts_As, experts_Zs
-
 def relu(data: np.ndarray, as_derivative=False) -> np.ndarray:
     if as_derivative:
         return (data > 0).astype(np.float64)
@@ -95,13 +50,15 @@ def accuracy(labels: np.ndarray, predictions: np.ndarray) -> np.float64:
         return np.mean((predictions >= 0.5).astype(int) == target)
     return np.mean(np.argmax(predictions, axis=1, keepdims=True) == labels)
 
-def copy_neural_network(neural_network: list[tuple[np.ndarray, np.ndarray]]):
-    return [(W.copy(), b.copy()) for W, b in neural_network]
+def evaluate(model, inputs: np.ndarray, labels: np.ndarray) -> tuple[np.float64, np.float64]:
+    predictions, _ = model.forward(inputs)
+    return cross_entropy_loss(labels, predictions), accuracy(labels, predictions)
 
-def copy_mixture_of_experts(mixture_of_experts: tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]]) -> tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]]:
-    gater, experts = mixture_of_experts
+def count_parameters(model) -> int:
+    return sum(p.size for p in model.parameters())
 
-    return copy_neural_network(gater), [copy_neural_network(expert) for expert in experts]
+def count_updated_parameters(initial_model, model) -> int:
+    return int(sum(np.sum(initial_p != p) for initial_p, p in zip(initial_model.parameters(), model.parameters())))
 
 def save_neural_network(neural_network: list[tuple[np.ndarray, np.ndarray]], filename: str):
     with open(filename, 'w') as f:
@@ -122,45 +79,3 @@ def save_neural_network(neural_network: list[tuple[np.ndarray, np.ndarray]], fil
             for row in b:
                 row_string = ' '.join([f'{value:.5f}' for value in row])
                 f.write(row_string + '\n')
-
-def count_parameters(neural_network: list[tuple[np.ndarray, np.ndarray]]) -> int:
-    n_params = 0
-    for W, b in neural_network:
-        n_params += W.size
-        n_params += b.size
-    
-    return n_params
-
-def count_updated_parameters(initial_neural_network: list[tuple[np.ndarray, np.ndarray]], neural_network: list[tuple[np.ndarray, np.ndarray]]) -> int:
-    n_params_updated = 0
-
-    for layer_idx in range(len(neural_network)):
-        for param_idx in range(len(neural_network[layer_idx])):
-            for row_idx in range(len(neural_network[layer_idx][param_idx])):
-                for col_idx in range(len(neural_network[layer_idx][param_idx][row_idx])):
-                    if initial_neural_network[layer_idx][param_idx][row_idx][col_idx] != neural_network[layer_idx][param_idx][row_idx][col_idx]:
-                        n_params_updated += 1
-
-    return n_params_updated
-
-def count_mixture_of_experts_parameters(mixture_of_experts: tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]]) -> int:
-    gater, experts = mixture_of_experts
-    n_params = count_parameters(gater)
-
-    for expert in experts:
-        n_params += count_parameters(expert)
-
-    return n_params
-
-def count_mixture_of_experts_updated_parameters(
-    initial_mixture_of_experts: tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]],
-    mixture_of_experts: tuple[list[tuple[np.ndarray, np.ndarray]], list[list[tuple[np.ndarray, np.ndarray]]]],
-) -> int:
-    initial_gater, initial_experts = initial_mixture_of_experts
-    gater, experts = mixture_of_experts
-    n_params_updated = count_updated_parameters(initial_gater, gater)
-
-    for initial_expert, expert in zip(initial_experts, experts):
-        n_params_updated += count_updated_parameters(initial_expert, expert)
-
-    return n_params_updated
