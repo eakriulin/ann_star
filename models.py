@@ -19,7 +19,7 @@ class Model(ABC):
         pass
 
     @abstractmethod
-    def parameters(self) -> list[np.ndarray]:
+    def parameters(self) -> list:
         pass
 
     @abstractmethod
@@ -80,8 +80,8 @@ class MLP(Model):
             W -= learning_rate * W_grad
             b -= learning_rate * b_grad.T
 
-    def parameters(self) -> list[np.ndarray]:
-        return [p for layer in self.layers for p in layer]
+    def parameters(self) -> list[list[np.ndarray]]:
+        return [[W, b] for W, b in self.layers]
 
     def copy(self) -> 'MLP':
         return MLP([(W.copy(), b.copy()) for W, b in self.layers], self.last_activation)
@@ -143,8 +143,8 @@ class MoE(Model):
         for expert, expert_gradients in zip(self.experts, experts_gradients):
             expert.update(expert_gradients, learning_rate)
 
-    def parameters(self) -> list[np.ndarray]:
-        return [*self.gater, *[p for expert in self.experts for p in expert.parameters()]]
+    def parameters(self) -> list[list[list[np.ndarray]]]:
+        return [[list(self.gater)], *[expert.parameters() for expert in self.experts]]
 
     def copy(self) -> 'MoE':
         W_gater, b_gater = self.gater

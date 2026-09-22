@@ -65,22 +65,26 @@ def train(
             batch_inputs = train_inputs[batch_idx * batch_size:(batch_idx + 1) * batch_size]
             batch_labels = train_labels[batch_idx * batch_size:(batch_idx + 1) * batch_size]
 
-            params = node.model.parameters()
-            
             # note: optimizing random portion of the neural network
             n_params_updated = 0
-            for tensor_idx in np.random.permutation(len(params)):
-                for param_idx in np.random.permutation(params[tensor_idx].size):
-                    for action in actions:
-                        next_model = node.model.copy()
-                        next_model.parameters()[tensor_idx].flat[param_idx] += action
+            for indices in random_parameter_indices(node.model.parameters()):
+                *tensor_indices, row_idx, col_idx = indices
 
-                        next_loss, next_accuracy = evaluate(next_model, batch_inputs, batch_labels)
-                        frontier.append(Node(model=next_model, depth=node.depth + 1, loss=next_loss, accuracy=next_accuracy, parent=node))
+                for action in actions:
+                    next_model = node.model.copy()
 
-                    n_params_updated += 1
-                    if n_params_updated == n_params_to_update:
-                        return
+                    tensor = next_model.parameters()
+                    for idx in tensor_indices:
+                        tensor = tensor[idx]
+                        
+                    tensor[row_idx, col_idx] += action
+
+                    next_loss, next_accuracy = evaluate(next_model, batch_inputs, batch_labels)
+                    frontier.append(Node(model=next_model, depth=node.depth + 1, loss=next_loss, accuracy=next_accuracy, parent=node))
+
+                n_params_updated += 1
+                if n_params_updated == n_params_to_update:
+                    return
         
         optimize()
 
@@ -146,6 +150,15 @@ class PriorityQueue:
 
     def __len__(self):
         return len(self.heap)
+
+def random_parameter_indices(parameters, indices: tuple = ()):
+    if isinstance(parameters, np.ndarray):
+        for row_idx in np.random.permutation(parameters.shape[0]):
+            for col_idx in np.random.permutation(parameters.shape[1]):
+                yield (*indices, row_idx, col_idx)
+    else:
+        for idx in np.random.permutation(len(parameters)):
+            yield from random_parameter_indices(parameters[idx], (*indices, idx))
 
 def is_goal(node: Node, goal: float, inputs: np.ndarray, labels: np.ndarray, batch_size: int):
     if node.accuracy < goal:

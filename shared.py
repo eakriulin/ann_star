@@ -54,11 +54,17 @@ def evaluate(model, inputs: np.ndarray, labels: np.ndarray) -> tuple[np.float64,
     predictions, _ = model.forward(inputs)
     return cross_entropy_loss(labels, predictions), accuracy(labels, predictions)
 
+def flatten_parameters(parameters) -> list[np.ndarray]:
+    if isinstance(parameters, np.ndarray):
+        return [parameters]
+
+    return [p for nested in parameters for p in flatten_parameters(nested)]
+
 def count_parameters(model) -> int:
-    return sum(p.size for p in model.parameters())
+    return sum(p.size for p in flatten_parameters(model.parameters()))
 
 def count_updated_parameters(initial_model, model) -> int:
-    return int(sum(np.sum(initial_p != p) for initial_p, p in zip(initial_model.parameters(), model.parameters())))
+    return int(sum(np.sum(initial_p != p) for initial_p, p in zip(flatten_parameters(initial_model.parameters()), flatten_parameters(model.parameters()))))
 
 def save_neural_network(neural_network: list[tuple[np.ndarray, np.ndarray]], filename: str):
     with open(filename, 'w') as f:
