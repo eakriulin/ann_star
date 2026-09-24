@@ -14,6 +14,15 @@ def sigmoid(data: np.ndarray, as_derivative=False):
     
     return 1 / (1 + np.exp(-data))
 
+def linear(data: np.ndarray, as_derivative=False) -> np.ndarray:
+    if as_derivative:
+        return np.ones_like(data)
+
+    return data
+
+def activation_fn(name: str):
+    return {'sigmoid': sigmoid, 'linear': linear}.get(name, relu)
+
 def softmax(data: np.ndarray) -> np.ndarray:
     shifted_data = data - np.max(data, axis=1, keepdims=True)
     exponents = np.exp(shifted_data)

@@ -12,7 +12,8 @@ def train(
     learning_rate: float,
     batch_size: int,
     n_epochs: int,
-    dataset: str
+    dataset: str,
+    should_plot: bool,
 ) -> tuple[float, float, int, float]:
     start_time = time.time()
 
@@ -52,5 +53,8 @@ def train(
     print(f'Updated {updated_params_count} parameters out of {count_parameters(model)}')
 
     print(f'Train time, sec = {train_time:.2f}')
+
+    if should_plot:
+        model.plot(dataset)
 
     return test_accuracy, test_loss, updated_params_count, train_time

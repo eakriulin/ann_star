@@ -15,7 +15,7 @@ def train(
     goal: float,
     batch_size: int,
     dataset: str,
-    should_plot_accuracy_vs_depth: bool,
+    should_plot: bool,
 ) -> tuple[float, float, int, float]:
     start_time = time.time()
 
@@ -42,7 +42,7 @@ def train(
 
         return d * (node.depth / n_params) + l * node.loss + a * (1 - node.accuracy)
 
-    frontier = PriorityQueue(f=cost_fn, max_size=10000)
+    frontier = PriorityQueue(f=cost_fn, max_size=1000)
     frontier.append(Node(model=model, depth=0, loss=0, accuracy=0, parent=None))
 
     print('Training...\n')
@@ -76,7 +76,7 @@ def train(
                     tensor = next_model.parameters()
                     for idx in tensor_indices:
                         tensor = tensor[idx]
-                        
+
                     tensor[row_idx, col_idx] += action
 
                     next_loss, next_accuracy = evaluate(next_model, batch_inputs, batch_labels)
@@ -102,8 +102,9 @@ def train(
 
     print(f'Train time, sec = {train_time:.2f}')
 
-    if should_plot_accuracy_vs_depth:
+    if should_plot:
         plot_accuracy_vs_depth(solutions[0], goal, dataset, model.model_type)
+        solutions[0].model.plot(dataset)
 
     return test_accuracy, test_loss, updated_params_count, train_time
 

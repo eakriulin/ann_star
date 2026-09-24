@@ -16,7 +16,7 @@ def main():
     parser.add_argument('--epochs', help='number of training epochs for backprop', default=1000)
     parser.add_argument('--goal', help='goal accuracy, e.g. 95', default=95)
     parser.add_argument('--lact', help='last activation; relu or sigmoid', default='relu')
-    parser.add_argument('--mtype', help='model type; mlp or moe', choices=list(nn.builders), default='moe')
+    parser.add_argument('--mtype', help='model type; mlp, moe or lamlp', choices=list(nn.builders), default='mlp')
     args = parser.parse_args()
 
     k = int(args.k)
@@ -32,10 +32,10 @@ def main():
 
     if args.algo == 'backprop':
         train_fn = backprop.train
-        train_kwargs = dict(learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs)
+        train_kwargs = dict(learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, should_plot=k <= 1)
     elif args.algo == 'astar':
         train_fn = a_star.train
-        train_kwargs = dict(goal=goal, batch_size=batch_size, should_plot_accuracy_vs_depth=k <= 1)
+        train_kwargs = dict(goal=goal, batch_size=batch_size, should_plot=k <= 1)
     else:
         raise ValueError(f'Unknown algo: {args.algo}')
 
