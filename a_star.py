@@ -42,7 +42,7 @@ def train(
 
         return d * (node.depth / n_params) + l * node.loss + a * (1 - node.accuracy)
 
-    frontier = PriorityQueue(f=cost_fn, max_size=1000)
+    frontier = GreedyQueue(f=cost_fn, max_size=100000)
     frontier.append(Node(model=model, depth=0, loss=0, accuracy=0, parent=None))
 
     print('Training...\n')
@@ -130,27 +130,80 @@ class Node:
 
 class PriorityQueue:
     def __init__(self, f: Callable, max_size: int):
-        self.heap = []
         self.f = f
         self.max_size = max_size
+        self.items: dict[int, Any] = {}
+        self.min_heap: list[tuple[float, int]] = []
+        self.max_heap: list[tuple[float, int]] = [] # note: stores -priority
+        self.next_id = 0
 
     def append(self, item: Any):
         priority = self.f(item)
-        if len(self.heap) <= self.max_size:
-            heapq.heappush(self.heap, (priority, item))
-        else:
-            lowest_priority, _ = self.heap[0]
-            if priority < lowest_priority:
-                heapq.heapreplace(self.heap, (priority, item))
+
+        if len(self.items) >= self.max_size:
+            self._drop_dead(self.max_heap)
+            worst_priority = -self.max_heap[0][0]
+            if priority >= worst_priority:
+                return
+
+            _, worst_id = heapq.heappop(self.max_heap)
+            del self.items[worst_id]
+
+        item_id = self.next_id
+        self.next_id += 1
+
+        self.items[item_id] = item
+        heapq.heappush(self.min_heap, (priority, item_id))
+        heapq.heappush(self.max_heap, (-priority, item_id))
+
+        if len(self.min_heap) > 2 * self.max_size or len(self.max_heap) > 2 * self.max_size:
+            self._compact()
 
     def pop(self):
-        if self.heap:
-            return heapq.heappop(self.heap)[1]
-        else:
+        self._drop_dead(self.min_heap)
+        if not self.min_heap:
             raise Exception('Cannot pop from empty queue.')
 
+        _, item_id = heapq.heappop(self.min_heap)
+        return self.items.pop(item_id)
+
+    def _drop_dead(self, heap: list):
+        while heap and heap[0][1] not in self.items:
+            heapq.heappop(heap)
+
+    def _compact(self):
+        self.min_heap = [entry for entry in self.min_heap if entry[1] in self.items]
+        self.max_heap = [entry for entry in self.max_heap if entry[1] in self.items]
+        heapq.heapify(self.min_heap)
+        heapq.heapify(self.max_heap)
+
     def __len__(self):
-        return len(self.heap)
+        return len(self.items)
+
+class GreedyQueue:
+    """
+    Greedy best-first search with backtracking.
+    - Of the children appended since the last pop, only the best n_best_children are kept.
+    - On pop(), they join the frontier (a bounded PriorityQueue) and the lowest-cost node overall is returned.
+    - So the search usually follows the best child, but switches back to an older node
+      (e.g. shallower, lower cost) when no new child beats it.
+    """
+
+    def __init__(self, f: Callable, max_size: int, n_best_children: int = 1):
+        self.frontier = PriorityQueue(f=f, max_size=max_size)
+        self.children = PriorityQueue(f=f, max_size=n_best_children)
+
+    def append(self, item: Any):
+        self.children.append(item)
+
+    def pop(self):
+        while len(self.children) > 0:
+            self.frontier.append(self.children.pop())
+
+        return self.frontier.pop()
+
+    def __len__(self):
+        return len(self.frontier) + len(self.children)
 
 def random_parameter_indices(parameters, indices: tuple = ()):
     if isinstance(parameters, np.ndarray):
