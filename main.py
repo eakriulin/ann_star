@@ -16,7 +16,7 @@ def main():
     parser.add_argument('--epochs', help='number of training epochs for backprop', default=1000)
     parser.add_argument('--goal', help='goal accuracy, e.g. 95', default=95)
     parser.add_argument('--lact', help='last activation; relu or sigmoid', default='relu')
-    parser.add_argument('--mtype', help='model type; mlp, moe or lamlp', choices=list(nn.builders), default='mlp')
+    parser.add_argument('--mtype', help='model type', choices=list(nn.builders), default='mlp')
     args = parser.parse_args()
 
     k = int(args.k)

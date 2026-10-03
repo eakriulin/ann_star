@@ -20,7 +20,7 @@ def linear(data: np.ndarray, as_derivative=False) -> np.ndarray:
 
     return data
 
-def activation_fn(name: str):
+def activation_fn_by_name(name: str):
     return {'sigmoid': sigmoid, 'linear': linear}.get(name, relu)
 
 def softmax(data: np.ndarray) -> np.ndarray:

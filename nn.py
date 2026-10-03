@@ -1,5 +1,5 @@
 import numpy as np
-from models import Model, MLP, MoE, LearnedActivationMLP, Layer
+from models import Model, MLP, MoE, TargetPropagationMLP, Layer
 
 def initialize(dataset: str, architecture_type: str, method: str, last_activation: str, model_type: str) -> Model:
     return builders[model_type](dataset, architecture_type, method, last_activation)
@@ -117,9 +117,6 @@ def initialize_mixture_of_experts(dataset: str, architecture_type: str, method: 
                     [
                         layer(n_features_in=64, n_features_out=10, method=method),
                     ],
-                    [
-                        layer(n_features_in=64, n_features_out=10, method=method),
-                    ],
                 ],
                 method=method,
             ),
@@ -195,185 +192,37 @@ def initialize_mixture_of_experts(dataset: str, architecture_type: str, method: 
 
     return MoE(gater, [MLP(expert, last_activation) for expert in experts])
 
-def initialize_learned_activation_mlp(dataset: str, architecture_type: str, method: str, last_activation: str) -> LearnedActivationMLP:
-    layers, activations = {
-        'iris': {
-            '2': learned_activation_mlp(
-                layers=mlp_layers(dataset, architecture_type, method),
-                activations=[
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                ],
-                method=method,
-            ),
-            '3': learned_activation_mlp(
-                layers=mlp_layers(dataset, architecture_type, method),
-                activations=[
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                ],
-                method=method,
-            ),
-            '4': learned_activation_mlp(
-                layers=mlp_layers(dataset, architecture_type, method),
-                activations=[
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                ],
-                method=method,
-            ),
-        },
-        'wine': {
-            '2': learned_activation_mlp(
-                layers=mlp_layers(dataset, architecture_type, method),
-                activations=[
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                ],
-                method=method,
-            ),
-            '3': learned_activation_mlp(
-                layers=mlp_layers(dataset, architecture_type, method),
-                activations=[
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                ],
-                method=method,
-            ),
-        },
-        'digits': {
-            '2': learned_activation_mlp(
-                layers=mlp_layers(dataset, architecture_type, method),
-                activations=[
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                ],
-                method=method,
-            ),
-            '3': learned_activation_mlp(
-                layers=mlp_layers(dataset, architecture_type, method),
-                activations=[
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                ],
-                method=method,
-            ),
-        },
-        'stripes2': {
-            '2': learned_activation_mlp(
-                layers=mlp_layers(dataset, architecture_type, method),
-                activations=[
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                ],
-                method=method,
-            ),
-            '3': learned_activation_mlp(
-                layers=mlp_layers(dataset, architecture_type, method),
-                activations=[
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                ],
-                method=method,
-            ),
-        },
-        'stripes3': {
-            '2': learned_activation_mlp(
-                layers=mlp_layers(dataset, architecture_type, method),
-                activations=[
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                ],
-                method=method,
-            ),
-            '3': learned_activation_mlp(
-                layers=mlp_layers(dataset, architecture_type, method),
-                activations=[
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                    [
-                        layer(n_features_in=1, n_features_out=8, method=method),
-                        layer(n_features_in=8, n_features_out=1, method=method),
-                    ],
-                ],
-                method=method,
-            ),
-        },
-    }[dataset][architecture_type]
+def initialize_target_propagation_mlp(dataset: str, architecture_type: str, method: str, last_activation: str) -> TargetPropagationMLP:
+    if last_activation != 'sigmoid':
+        raise ValueError('Target propagation needs a sigmoid output, e.g. --lact=sigmoid')
 
-    hidden_activations = [MLP(activation, last_activation='linear') for activation in activations[:-1]]
-    output_activation = MLP(activations[-1], last_activation=last_activation)
+    layers = mlp_layers(dataset, architecture_type, method)
 
-    return LearnedActivationMLP(layers, [*hidden_activations, output_activation])
+    if len(layers) != 2 or layers[-1][0].shape[1] != 1:
+        raise ValueError('Target propagation needs exactly one hidden layer and one output neuron, e.g. --dataset=stripes2 --l=3')
 
-def learned_activation_mlp(
-    layers: list[Layer],
-    activations: list[list[Layer]],
-    method: str,
-) -> tuple[list[Layer], list[list[Layer]]]:
-    if method != 'zeros':
-        for activation in activations:
-            for W, b in activation:
-                W *= 0.1
+    hidden_layer, output_layer = layers
+    n_hidden_neurons = hidden_layer[0].shape[1]
+    neuron_activation_mlps = relu_like_activation_mlps(n_hidden_neurons, method)
 
-    # note: every activation starts as relu(x): identity weights pass neuron 0 through every layer, relu is applied in between
-    for activation in activations:
-        for W, b in activation:
-            W[np.eye(*W.shape, dtype=bool)] = 1.0
+    return TargetPropagationMLP(hidden_layer, neuron_activation_mlps, output_layer, last_activation)
 
-    # note: output activation starts as identity instead: neuron 1 carries relu(-x), so the output is relu(x) - relu(-x) = x
-    W_first, _ = activations[-1][0]
-    W_last, _ = activations[-1][-1]
-    W_first[0, 1] = -1.0
-    W_last[1, 0] = -1.0
+def relu_like_activation_mlps(n_mlps: int, method: str) -> list[MLP]:
+    return [MLP(relu_like_activation_layers(method), last_activation='linear') for _ in range(n_mlps)]
 
-    return layers, activations
+def relu_like_activation_layers(method: str) -> list[Layer]:
+    activation_layers = [
+        layer(n_features_in=1, n_features_out=8, method=method),
+        layer(n_features_in=8, n_features_out=1, method=method),
+    ]
+
+    for W, _ in activation_layers:
+        if method != 'zeros':
+            W *= 0.1
+
+        W[np.eye(*W.shape, dtype=bool)] = 1.0
+
+    return activation_layers
 
 def mixture_of_experts(
     n_features_in: int,
@@ -398,5 +247,5 @@ def layer(n_features_in: int, n_features_out: int, method: str) -> Layer:
 builders = {
     MLP.model_type: initialize_mlp,
     MoE.model_type: initialize_mixture_of_experts,
-    LearnedActivationMLP.model_type: initialize_learned_activation_mlp,
+    TargetPropagationMLP.model_type: initialize_target_propagation_mlp,
 }

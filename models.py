@@ -1,11 +1,25 @@
 import time
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, NamedTuple
 import numpy as np
 import matplotlib.pyplot as plt
-from shared import relu, softmax, activation_fn
+from shared import relu, softmax, activation_fn_by_name
 
 Layer = tuple[np.ndarray, np.ndarray]
+
+class MLPCache(NamedTuple):
+    Z_per_layer: list[np.ndarray]
+    A_per_layer: list[np.ndarray]
+
+class MoECache(NamedTuple):
+    A_gater: np.ndarray
+    experts_caches: list[MLPCache]
+
+class TargetPropagationMLPCache(NamedTuple):
+    Z_hidden: np.ndarray
+    A_hidden: np.ndarray
+    neuron_activation_caches: list[MLPCache]
+    Z_output: np.ndarray
 
 class Model(ABC):
     @abstractmethod
@@ -40,57 +54,57 @@ class MLP(Model):
     def __init__(self, layers: list[Layer], last_activation: str):
         self.layers = layers
         self.last_activation = last_activation
-        self.last_activation_fn = activation_fn(last_activation)
+        self.last_activation_fn = activation_fn_by_name(last_activation)
 
-    def forward(self, inputs: np.ndarray) -> tuple[np.ndarray, tuple[list[np.ndarray], list[np.ndarray]]]:
+    def forward(self, inputs: np.ndarray) -> tuple[np.ndarray, MLPCache]:
         n_layers = len(self.layers)
         last_layer_idx = n_layers - 1
 
-        Zs = [None] * n_layers # note: layer input x layer weights + bias
-        As = [None] * n_layers # note: layer activations
+        Z_per_layer = [None] * n_layers # note: layer input x layer weights + bias
+        A_per_layer = [None] * n_layers # note: layer activations
 
         for l in range(0, n_layers):
             W, b = self.layers[l]
-            layer_input = inputs if l == 0 else As[l - 1]
+            layer_input = inputs if l == 0 else A_per_layer[l - 1]
 
-            Zs[l] = np.matmul(layer_input, W) + np.squeeze(b)
-            As[l] = self.last_activation_fn(Zs[l]) if l == last_layer_idx else relu(Zs[l])
+            Z_per_layer[l] = np.matmul(layer_input, W) + np.squeeze(b)
+            A_per_layer[l] = self.last_activation_fn(Z_per_layer[l]) if l == last_layer_idx else relu(Z_per_layer[l])
 
-        return As[-1], (As, Zs)
+        return A_per_layer[-1], MLPCache(Z_per_layer, A_per_layer)
 
-    def backward(self, inputs: np.ndarray, cache: tuple[list[np.ndarray], list[np.ndarray]], loss_derivative: np.ndarray) -> list[Layer]:
-        gradients, _ = self._backward(inputs, cache, loss_derivative)
-        return gradients
+    def backward(self, inputs: np.ndarray, cache: MLPCache, loss_derivative: np.ndarray) -> list[Layer]:
+        layer_gradients, _ = self.backward_with_inputs_gradient(inputs, cache, loss_derivative)
+        return layer_gradients
 
-    def _backward(self, inputs: np.ndarray, cache: tuple[list[np.ndarray], list[np.ndarray]], loss_derivative: np.ndarray) -> tuple[list[Layer], np.ndarray]:
-        As, Zs = cache
+    def backward_with_inputs_gradient(self, inputs: np.ndarray, cache: MLPCache, loss_derivative: np.ndarray) -> tuple[list[Layer], np.ndarray]:
+        Z_per_layer, A_per_layer = cache
         n_layers = len(self.layers)
         last_layer_idx = n_layers - 1
 
-        gradients = [None] * n_layers
+        layer_gradients = [None] * n_layers
 
         for l in range(last_layer_idx, -1, -1):
             if l == last_layer_idx:
-                delta = loss_derivative * self.last_activation_fn(Zs[l], as_derivative=True)
+                Z_gradient = loss_derivative * self.last_activation_fn(Z_per_layer[l], as_derivative=True)
             else:
-                W_of_next_layer, _ = self.layers[l + 1]
-                delta = np.matmul(delta, W_of_next_layer.T) * relu(Zs[l], as_derivative=True)
+                W_next_layer, _ = self.layers[l + 1]
+                Z_gradient = np.matmul(Z_gradient, W_next_layer.T) * relu(Z_per_layer[l], as_derivative=True)
 
-            layer_input = inputs if l == 0 else As[l - 1]
-            W_gradient = np.matmul(layer_input.T, delta)
-            b_gradient = np.sum(delta, keepdims=True, axis=0)
+            layer_input = inputs if l == 0 else A_per_layer[l - 1]
+            W_gradient = np.matmul(layer_input.T, Z_gradient)
+            b_gradient = np.sum(Z_gradient, keepdims=True, axis=0)
 
-            gradients[l] = (W_gradient, b_gradient)
+            layer_gradients[l] = (W_gradient, b_gradient)
 
-        W_of_first_layer, _ = self.layers[0]
-        inputs_gradient = np.matmul(delta, W_of_first_layer.T)
+        W_first_layer, _ = self.layers[0]
+        inputs_gradient = np.matmul(Z_gradient, W_first_layer.T)
 
-        return gradients, inputs_gradient
+        return layer_gradients, inputs_gradient
 
     def update(self, gradients: list[Layer], learning_rate: float) -> None:
-        for (W, b), (W_grad, b_grad) in zip(self.layers, gradients):
-            W -= learning_rate * W_grad
-            b -= learning_rate * b_grad.T
+        for (W, b), (W_gradient, b_gradient) in zip(self.layers, gradients):
+            W -= learning_rate * W_gradient
+            b -= learning_rate * b_gradient.T
 
     def parameters(self) -> list[list[np.ndarray]]:
         return [[W, b] for W, b in self.layers]
@@ -99,160 +113,224 @@ class MLP(Model):
         return MLP([(W.copy(), b.copy()) for W, b in self.layers], self.last_activation)
 
 
-class LearnedActivationMLP(Model):
-    model_type = 'lamlp'
+class MoE(Model):
+    model_type = 'moe'
 
-    def __init__(self, layers: list[Layer], activations: list[MLP], activation_learning_rate_scale: float = 0.1):
-        self.layers = layers
-        self.activations = activations # note: one 1 -> ... -> 1 MLP per layer, shared by every neuron of that layer
-        self.activation_learning_rate_scale = activation_learning_rate_scale
+    def __init__(self, gater_layer: Layer, experts: list[MLP]):
+        self.gater_layer = gater_layer
+        self.experts = experts
 
-    def forward(self, inputs: np.ndarray) -> tuple[np.ndarray, tuple[list[np.ndarray], list[np.ndarray], list[Any]]]:
-        n_layers = len(self.layers)
+    def forward(self, inputs: np.ndarray) -> tuple[np.ndarray, MoECache]:
+        W_gater, b_gater = self.gater_layer
+        A_gater = softmax(np.matmul(inputs, W_gater) + np.squeeze(b_gater))
 
-        Zs = [None] * n_layers
-        As = [None] * n_layers
-        activation_caches = [None] * n_layers
+        A_experts = []
+        experts_caches = []
+        for expert in self.experts:
+            A_expert, expert_cache = expert.forward(inputs)
+            A_experts.append(A_expert)
+            experts_caches.append(expert_cache)
 
-        for l in range(0, n_layers):
-            W, b = self.layers[l]
-            layer_input = inputs if l == 0 else As[l - 1]
+        A_output = np.zeros_like(A_experts[0])
+        for expert_idx, A_expert in enumerate(A_experts):
+            A_output += A_gater[:, expert_idx:expert_idx + 1] * A_expert
 
-            Zs[l] = np.matmul(layer_input, W) + np.squeeze(b)
+        return A_output, MoECache(A_gater, experts_caches)
 
-            activation_output, activation_caches[l] = self.activations[l].forward(Zs[l].reshape(-1, 1))
-            As[l] = activation_output.reshape(Zs[l].shape)
+    def backward(self, inputs: np.ndarray, cache: MoECache, loss_derivative: np.ndarray) -> tuple[Layer, list[list[Layer]]]:
+        A_gater, experts_caches = cache
 
-        return As[-1], (As, Zs, activation_caches)
+        experts_gradients = []
+        A_gater_gradient = np.zeros_like(A_gater)
 
-    def backward(self, inputs: np.ndarray, cache: tuple[list[np.ndarray], list[np.ndarray], list[Any]], loss_derivative: np.ndarray) -> tuple[list[Layer], list[list[Layer]]]:
-        As, Zs, activation_caches = cache
-        n_layers = len(self.layers)
-        last_layer_idx = n_layers - 1
+        for expert_idx, expert in enumerate(self.experts):
+            A_gater_of_expert = A_gater[:, expert_idx:expert_idx + 1]
+            expert_loss_derivative = A_gater_of_expert * loss_derivative
+            experts_gradients.append(expert.backward(inputs, experts_caches[expert_idx], expert_loss_derivative))
 
-        gradients = [None] * n_layers
-        activation_gradients = [None] * n_layers
+            A_expert = experts_caches[expert_idx].A_per_layer[-1]
+            A_gater_gradient[:, expert_idx] = np.sum(loss_derivative * A_expert, axis=1)
 
-        for l in range(last_layer_idx, -1, -1):
-            if l == last_layer_idx:
-                activation_output_gradient = loss_derivative
-            else:
-                W_of_next_layer, _ = self.layers[l + 1]
-                activation_output_gradient = np.matmul(delta, W_of_next_layer.T)
+        weighted_average_A_gater_gradient = np.sum(A_gater * A_gater_gradient, axis=1, keepdims=True)
+        Z_gater_gradient = A_gater * (A_gater_gradient - weighted_average_A_gater_gradient)
 
-            activation_gradients[l], activation_input_gradient = self.activations[l]._backward(Zs[l].reshape(-1, 1), activation_caches[l], activation_output_gradient.reshape(-1, 1))
-            delta = activation_input_gradient.reshape(Zs[l].shape)
+        W_gater_gradient = np.matmul(inputs.T, Z_gater_gradient)
+        b_gater_gradient = np.sum(Z_gater_gradient, keepdims=True, axis=0)
 
-            layer_input = inputs if l == 0 else As[l - 1]
-            W_gradient = np.matmul(layer_input.T, delta)
-            b_gradient = np.sum(delta, keepdims=True, axis=0)
+        return (W_gater_gradient, b_gater_gradient), experts_gradients
 
-            gradients[l] = (W_gradient, b_gradient)
+    def update(self, gradients: tuple[Layer, list[list[Layer]]], learning_rate: float) -> None:
+        (W_gater_gradient, b_gater_gradient), experts_gradients = gradients
 
-        return gradients, activation_gradients
+        W_gater, b_gater = self.gater_layer
+        W_gater -= learning_rate * W_gater_gradient
+        b_gater -= learning_rate * b_gater_gradient.T
 
-    def update(self, gradients: tuple[list[Layer], list[list[Layer]]], learning_rate: float) -> None:
-        layer_gradients, activation_gradients = gradients
+        for expert, expert_gradients in zip(self.experts, experts_gradients):
+            expert.update(expert_gradients, learning_rate)
 
-        for (W, b), (W_grad, b_grad) in zip(self.layers, layer_gradients):
-            W -= learning_rate * W_grad
-            b -= learning_rate * b_grad.T
+    def parameters(self) -> list[list[list[np.ndarray]]]:
+        return [[list(self.gater_layer)], *[expert.parameters() for expert in self.experts]]
 
-        for activation, activation_gradient in zip(self.activations, activation_gradients):
-            activation.update(activation_gradient, learning_rate * self.activation_learning_rate_scale)
+    def copy(self) -> 'MoE':
+        W_gater, b_gater = self.gater_layer
+        return MoE((W_gater.copy(), b_gater.copy()), [expert.copy() for expert in self.experts])
+
+
+class TargetPropagationMLP(Model):
+    model_type = 'tpmlp'
+
+    def __init__(self, hidden_layer: Layer, neuron_activation_mlps: list[MLP], output_layer: Layer, last_activation: str, neuron_activation_learning_rate_scale: float = 0.1):
+        self.hidden_layer = hidden_layer
+        self.neuron_activation_mlps = neuron_activation_mlps
+        self.output_layer = output_layer
+        self.last_activation = last_activation
+        self.last_activation_fn = activation_fn_by_name(last_activation)
+        self.neuron_activation_learning_rate_scale = neuron_activation_learning_rate_scale
+
+    def forward(self, inputs: np.ndarray) -> tuple[np.ndarray, TargetPropagationMLPCache]:
+        W_hidden, b_hidden = self.hidden_layer
+        W_output, b_output = self.output_layer
+
+        Z_hidden = np.matmul(inputs, W_hidden) + np.squeeze(b_hidden, axis=1)
+
+        A_hidden = np.zeros_like(Z_hidden)
+        neuron_activation_caches = []
+        for u, activation_mlp in enumerate(self.neuron_activation_mlps):
+            a_u, neuron_activation_cache = activation_mlp.forward(Z_hidden[:, u:u + 1])
+            A_hidden[:, u:u + 1] = a_u
+            neuron_activation_caches.append(neuron_activation_cache)
+
+        Z_output = np.matmul(A_hidden, W_output) + np.squeeze(b_output, axis=1)
+        A_output = self.last_activation_fn(Z_output)
+
+        return A_output, TargetPropagationMLPCache(Z_hidden, A_hidden, neuron_activation_caches, Z_output)
+
+    def backward(self, inputs: np.ndarray, cache: TargetPropagationMLPCache, loss_derivative: np.ndarray) -> tuple[Layer, list[list[Layer]], Layer]:
+        Z_hidden, A_hidden, neuron_activation_caches, Z_output = cache
+        batch_size = len(inputs)
+
+        # note: the output layer gets the usual gradient, treating hidden values as fixed inputs
+        Z_output_gradient = loss_derivative * self.last_activation_fn(Z_output, as_derivative=True)
+        output_layer_gradient = (np.matmul(A_hidden.T, Z_output_gradient), np.sum(Z_output_gradient, keepdims=True, axis=0))
+
+        # note: each hidden neuron trains alone toward its own target
+        output_error = -Z_output_gradient * batch_size
+        A_hidden_targets = self._hidden_targets_from_output_error(A_hidden, output_error)
+        A_hidden_gradient = 2 * (A_hidden - A_hidden_targets) / batch_size
+
+        Z_hidden_gradient = np.zeros_like(Z_hidden)
+        neuron_activation_gradients = []
+        for u, activation_mlp in enumerate(self.neuron_activation_mlps):
+            neuron_activation_gradient, z_u_gradient = activation_mlp.backward_with_inputs_gradient(Z_hidden[:, u:u + 1], neuron_activation_caches[u], A_hidden_gradient[:, u:u + 1])
+            Z_hidden_gradient[:, u:u + 1] = z_u_gradient
+            neuron_activation_gradients.append(neuron_activation_gradient)
+
+        hidden_layer_gradient = (np.matmul(inputs.T, Z_hidden_gradient), np.sum(Z_hidden_gradient, keepdims=True, axis=0))
+
+        return hidden_layer_gradient, neuron_activation_gradients, output_layer_gradient
+
+    def hidden_targets(self, cache: TargetPropagationMLPCache, labels: np.ndarray) -> np.ndarray:
+        output_error = labels - self.last_activation_fn(cache.Z_output)
+
+        return self._hidden_targets_from_output_error(cache.A_hidden, output_error)
+
+    def _hidden_targets_from_output_error(self, A_hidden: np.ndarray, output_error: np.ndarray) -> np.ndarray:
+        W_output, _ = self.output_layer # note: (n_hidden_neurons, 1)
+        w_output = W_output[:, 0] # note: (n_hidden_neurons,)
+        min_weight = 0.1
+
+        # note: unlike the paper's sigmoid units, learned activations can go negative, so blame follows |h|; 1e-8 splits evenly when all are 0
+        activity = np.abs(A_hidden) + 1e-8 # note: (batch_size, n_hidden_neurons)
+        responsibilities = activity / np.sum(activity, axis=1, keepdims=True) # note: (batch_size, n_hidden_neurons)
+
+        # note: for training stability, tiny output weights count as +-min_weight so residuals stay bounded, at the cost of an undelivered share
+        safe_w_output = np.where(w_output < 0, -1, 1) * np.maximum(np.abs(w_output), min_weight) # note: (n_hidden_neurons,)
+
+        # note: output_error is used as a small gradient step instead of the paper's full correction through the inverse sigmoid
+        # note: (batch_size, n_hidden_neurons) * (batch_size, 1) / (n_hidden_neurons,) -> (batch_size, n_hidden_neurons)
+        residuals = responsibilities * output_error / safe_w_output
+
+        return A_hidden + residuals
+
+    def divide(self) -> tuple[list['HiddenNeuron'], MLP]:
+        W_hidden, b_hidden = self.hidden_layer
+        W_output, b_output = self.output_layer
+
+        hidden_neurons = [
+            HiddenNeuron(W_hidden[:, u:u + 1].copy(), b_hidden[u:u + 1].copy(), activation_mlp.copy())
+            for u, activation_mlp in enumerate(self.neuron_activation_mlps)
+        ]
+        output_mlp = MLP([(W_output.copy(), b_output.copy())], self.last_activation)
+
+        return hidden_neurons, output_mlp
+
+    @staticmethod
+    def merge(hidden_neurons: list['HiddenNeuron'], output_mlp: MLP) -> 'TargetPropagationMLP':
+        W_hidden = np.concatenate([neuron.w for neuron in hidden_neurons], axis=1)
+        b_hidden = np.concatenate([neuron.b for neuron in hidden_neurons], axis=0)
+        W_output, b_output = output_mlp.layers[0]
+
+        return TargetPropagationMLP(
+            (W_hidden, b_hidden),
+            [neuron.activation_mlp.copy() for neuron in hidden_neurons],
+            (W_output.copy(), b_output.copy()),
+            output_mlp.last_activation,
+        )
+
+    def update(self, gradients: tuple[Layer, list[list[Layer]], Layer], learning_rate: float) -> None:
+        hidden_layer_gradient, neuron_activation_gradients, output_layer_gradient = gradients
+
+        for (W, b), (W_gradient, b_gradient) in [(self.hidden_layer, hidden_layer_gradient), (self.output_layer, output_layer_gradient)]:
+            W -= learning_rate * W_gradient
+            b -= learning_rate * b_gradient.T
+
+        for activation_mlp, neuron_activation_gradient in zip(self.neuron_activation_mlps, neuron_activation_gradients):
+            activation_mlp.update(neuron_activation_gradient, learning_rate * self.neuron_activation_learning_rate_scale)
 
     def parameters(self) -> list:
-        parameters = []
+        return [list(self.hidden_layer), [activation_mlp.parameters() for activation_mlp in self.neuron_activation_mlps], list(self.output_layer)]
 
-        for (W, b), activation in zip(self.layers, self.activations):
-            parameters.append([W, b])
-            parameters.append(activation.parameters())
+    def copy(self) -> 'TargetPropagationMLP':
+        W_hidden, b_hidden = self.hidden_layer
+        W_output, b_output = self.output_layer
 
-        return parameters
-
-    def copy(self) -> 'LearnedActivationMLP':
-        return LearnedActivationMLP(
-            [(W.copy(), b.copy()) for W, b in self.layers],
-            [activation.copy() for activation in self.activations],
-            self.activation_learning_rate_scale,
+        return TargetPropagationMLP(
+            (W_hidden.copy(), b_hidden.copy()),
+            [activation_mlp.copy() for activation_mlp in self.neuron_activation_mlps],
+            (W_output.copy(), b_output.copy()),
+            self.last_activation,
+            self.neuron_activation_learning_rate_scale,
         )
 
     def plot(self, dataset: str) -> None:
         xs = np.linspace(-3, 3, 300)
 
         plt.figure(figsize=(10, 6))
-        for l, activation in enumerate(self.activations):
-            ys, _ = activation.forward(xs.reshape(-1, 1))
-            plt.plot(xs, ys.reshape(xs.shape), label=f'layer {l + 1} ({activation.last_activation} output)')
+        for u, activation_mlp in enumerate(self.neuron_activation_mlps):
+            ys, _ = activation_mlp.forward(xs.reshape(-1, 1))
+            plt.plot(xs, ys.reshape(xs.shape), label=f'hidden neuron {u + 1}')
         plt.plot(xs, relu(xs), 'k--', label='ReLU')
-        plt.title('Learned activations')
+        plt.title('Learned activations (per hidden neuron)')
         plt.xlabel('x')
-        plt.ylabel('g(x)')
+        plt.ylabel('f(x)')
         plt.grid(True)
         plt.legend()
 
-        plt.savefig(f'./learned_activations_{dataset}_{time.time()}.png')
+        plt.savefig(f'./learned_activations_{self.model_type}_{dataset}_{time.time()}.png')
 
+class HiddenNeuron:
+    def __init__(self, w: np.ndarray, b: np.ndarray, activation_mlp: MLP):
+        self.w = w
+        self.b = b
+        self.activation_mlp = activation_mlp
 
-class MoE(Model):
-    model_type = 'moe'
+    def forward(self, inputs: np.ndarray) -> np.ndarray:
+        a, _ = self.activation_mlp.forward(np.matmul(inputs, self.w) + self.b[0])
+        return a
 
-    def __init__(self, gater: Layer, experts: list[MLP]):
-        self.gater = gater
-        self.experts = experts
+    def parameters(self) -> list:
+        return [[self.w, self.b], self.activation_mlp.parameters()]
 
-    def forward(self, inputs: np.ndarray) -> tuple[np.ndarray, tuple[np.ndarray, list[Any]]]:
-        W_gater, b_gater = self.gater
-        gates = softmax(np.matmul(inputs, W_gater) + np.squeeze(b_gater))
-
-        experts_predictions = []
-        experts_caches = []
-        for expert in self.experts:
-            expert_predictions, expert_cache = expert.forward(inputs)
-            experts_predictions.append(expert_predictions)
-            experts_caches.append(expert_cache)
-
-        predictions = np.zeros_like(experts_predictions[0])
-        for expert_idx, expert_predictions in enumerate(experts_predictions):
-            predictions += gates[:, expert_idx:expert_idx + 1] * expert_predictions
-
-        return predictions, (gates, experts_caches)
-
-    def backward(self, inputs: np.ndarray, cache: tuple[np.ndarray, list[Any]], loss_derivative: np.ndarray) -> tuple[Layer, list[list[Layer]]]:
-        gates, experts_caches = cache
-
-        experts_gradients = []
-        gates_gradient = np.zeros_like(gates)
-
-        for expert_idx, expert in enumerate(self.experts):
-            expert_gate = gates[:, expert_idx:expert_idx + 1]
-            expert_loss_derivative = expert_gate * loss_derivative
-            experts_gradients.append(expert.backward(inputs, experts_caches[expert_idx], expert_loss_derivative))
-
-            expert_predictions = experts_caches[expert_idx][0][-1]
-            gates_gradient[:, expert_idx] = np.sum(loss_derivative * expert_predictions, axis=1)
-
-        weighted_average_gates_gradient = np.sum(gates * gates_gradient, axis=1, keepdims=True)
-        gater_delta = gates * (gates_gradient - weighted_average_gates_gradient)
-
-        gater_W_gradient = np.matmul(inputs.T, gater_delta)
-        gater_b_gradient = np.sum(gater_delta, keepdims=True, axis=0)
-
-        return (gater_W_gradient, gater_b_gradient), experts_gradients
-
-    def update(self, gradients: tuple[Layer, list[list[Layer]]], learning_rate: float) -> None:
-        (gater_W_gradient, gater_b_gradient), experts_gradients = gradients
-
-        W_gater, b_gater = self.gater
-        W_gater -= learning_rate * gater_W_gradient
-        b_gater -= learning_rate * gater_b_gradient.T
-
-        for expert, expert_gradients in zip(self.experts, experts_gradients):
-            expert.update(expert_gradients, learning_rate)
-
-    def parameters(self) -> list[list[list[np.ndarray]]]:
-        return [[list(self.gater)], *[expert.parameters() for expert in self.experts]]
-
-    def copy(self) -> 'MoE':
-        W_gater, b_gater = self.gater
-        return MoE((W_gater.copy(), b_gater.copy()), [expert.copy() for expert in self.experts])
+    def copy(self) -> 'HiddenNeuron':
+        return HiddenNeuron(self.w.copy(), self.b.copy(), self.activation_mlp.copy())
