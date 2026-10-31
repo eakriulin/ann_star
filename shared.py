@@ -29,39 +29,32 @@ def softmax(data: np.ndarray) -> np.ndarray:
 
     return exponents / np.sum(exponents, axis=1, keepdims=True)
 
-def cross_entropy_loss(labels: np.ndarray, predictions: np.ndarray, as_derivative=False) -> np.float64 | np.ndarray:
-    is_binary = predictions.shape[1] == 1
-
-    if is_binary:
-        target = labels.reshape(-1, 1) if labels.ndim == 1 else labels
-    else:
-        target = np.zeros((labels.shape[0], predictions.shape[1]))
-        target[np.arange(labels.shape[0]), labels[:, -1]] = 1
-
+def mse_loss(labels: np.ndarray, predictions: np.ndarray, as_derivative=False) -> np.float64 | np.ndarray:
+    target = target_matrix(labels, n_outputs=predictions.shape[1])
     clipped_predictions = np.clip(predictions, 1e-10, 1.0)
 
     if as_derivative:
-        if is_binary:
-            # Return true dL/dA so backward's sigmoid'(Z) multiplication gives correct dL/dZ
-            denom = clipped_predictions * (1 - clipped_predictions)
-            denom = np.clip(denom, 1e-10, 1.0)
-            return (clipped_predictions - target) / (denom * labels.shape[0])
         return (clipped_predictions - target) / labels.shape[0]
 
-    if is_binary:
-        return -np.mean(target * np.log(clipped_predictions) + (1 - target) * np.log(1 - clipped_predictions))
+    return np.sum((clipped_predictions - target) ** 2) / (2 * labels.shape[0])
 
-    return -np.mean(np.sum(target * np.log(clipped_predictions), axis=1))
+def target_matrix(labels: np.ndarray, n_outputs: int) -> np.ndarray:
+    if n_outputs == 1:
+        return labels.reshape(-1, 1) if labels.ndim == 1 else labels
+
+    target = np.zeros((labels.shape[0], n_outputs))
+    target[np.arange(labels.shape[0]), labels[:, -1]] = 1
+
+    return target
 
 def accuracy(labels: np.ndarray, predictions: np.ndarray) -> np.float64:
     if predictions.shape[1] == 1:
-        target = labels.reshape(-1, 1) if labels.ndim == 1 else labels
-        return np.mean((predictions >= 0.5).astype(int) == target)
+        return np.mean((predictions >= 0.5).astype(int) == target_matrix(labels, n_outputs=1))
     return np.mean(np.argmax(predictions, axis=1, keepdims=True) == labels)
 
 def evaluate(model, inputs: np.ndarray, labels: np.ndarray) -> tuple[np.float64, np.float64]:
     predictions, _ = model.forward(inputs)
-    return cross_entropy_loss(labels, predictions), accuracy(labels, predictions)
+    return mse_loss(labels, predictions), accuracy(labels, predictions)
 
 def flatten_parameters(parameters) -> list[np.ndarray]:
     if isinstance(parameters, np.ndarray):

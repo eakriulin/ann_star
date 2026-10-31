@@ -1,5 +1,5 @@
 import numpy as np
-from models import Model, MLP, MoE, TargetPropagationMLP, Layer
+from models import Model, MLP, MoE, TargetPropagationMLP, NeuronActivationMLP, Layer
 
 def initialize(dataset: str, architecture_type: str, method: str, last_activation: str, model_type: str) -> Model:
     return builders[model_type](dataset, architecture_type, method, last_activation)
@@ -207,6 +207,12 @@ def initialize_target_propagation_mlp(dataset: str, architecture_type: str, meth
 
     return TargetPropagationMLP(hidden_layer, neuron_activation_mlps, output_layer, last_activation)
 
+def initialize_neuron_activation_mlp(dataset: str, architecture_type: str, method: str, last_activation: str) -> NeuronActivationMLP:
+    layers = mlp_layers(dataset, architecture_type, method)
+    neuron_activation_mlps_per_layer = [relu_like_activation_mlps(W.shape[1], method) for W, _ in layers[:-1]]
+
+    return NeuronActivationMLP(layers, neuron_activation_mlps_per_layer, last_activation)
+
 def relu_like_activation_mlps(n_mlps: int, method: str) -> list[MLP]:
     return [MLP(relu_like_activation_layers(method), last_activation='linear') for _ in range(n_mlps)]
 
@@ -248,4 +254,5 @@ builders = {
     MLP.model_type: initialize_mlp,
     MoE.model_type: initialize_mixture_of_experts,
     TargetPropagationMLP.model_type: initialize_target_propagation_mlp,
+    NeuronActivationMLP.model_type: initialize_neuron_activation_mlp,
 }

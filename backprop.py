@@ -1,7 +1,8 @@
 import time
 import numpy as np
+from typing import Callable
 from models import Model
-from shared import accuracy, cross_entropy_loss, evaluate, count_parameters, count_updated_parameters
+from shared import accuracy, mse_loss, evaluate, count_parameters, count_updated_parameters
 
 def train(
     model: Model,
@@ -14,6 +15,7 @@ def train(
     n_epochs: int,
     dataset: str,
     should_plot: bool,
+    after_each_step: Callable[[Model, np.ndarray, np.ndarray], None] | None = None,
 ) -> tuple[float, float, int, float]:
     start_time = time.time()
 
@@ -30,11 +32,14 @@ def train(
             batch_labels = train_labels[batch_idx:batch_idx + batch_size]
 
             batch_predictions, batch_cache = model.forward(batch_inputs)
-            batch_loss = cross_entropy_loss(batch_labels, batch_predictions)
+            batch_loss = mse_loss(batch_labels, batch_predictions)
 
-            batch_loss_derivative = cross_entropy_loss(batch_labels, batch_predictions, as_derivative=True)
+            batch_loss_derivative = mse_loss(batch_labels, batch_predictions, as_derivative=True)
             gradients = model.backward(batch_inputs, batch_cache, batch_loss_derivative)
             model.update(gradients, learning_rate)
+
+            if after_each_step is not None:
+                after_each_step(model, batch_inputs, batch_labels)
 
             epoch_loss += batch_loss * len(batch_inputs)
             epoch_accuracy += accuracy(batch_labels, batch_predictions) * len(batch_inputs)

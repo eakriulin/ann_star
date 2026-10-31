@@ -4,10 +4,11 @@ import nn
 import backprop
 import a_star
 import kfold
+import joint
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--algo', help='training algorithm; astar or backprop', default='astar')
+    parser.add_argument('--algo', help='training algorithm; astar, backprop or joint', default='astar')
     parser.add_argument('--k', help='number of folds for k-fold cross validation', default=0)
     parser.add_argument('--stratified', help='should make stratified folds, 0 or 1', default=0)
     parser.add_argument('--dataset', help='dataset name; iris, wine, digits, stripes2 or stripes3', default='iris')
@@ -25,13 +26,16 @@ def main():
     batch_size = int(args.batch)
     n_epochs = int(args.epochs)
     learning_rate = 0.001
-    initialization_method = 'he' if args.algo == 'backprop' else 'zeros'
+    initialization_method = 'zeros' if args.algo == 'astar' else 'he'
 
     def initialize():
         return nn.initialize(dataset=args.dataset, architecture_type=args.l, method=initialization_method, last_activation=args.lact, model_type=args.mtype)
 
     if args.algo == 'backprop':
         train_fn = backprop.train
+        train_kwargs = dict(learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, should_plot=k <= 1)
+    elif args.algo == 'joint':
+        train_fn = joint.train
         train_kwargs = dict(learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, should_plot=k <= 1)
     elif args.algo == 'astar':
         train_fn = a_star.train

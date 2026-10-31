@@ -2,9 +2,9 @@ import time
 import heapq
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 from models import Model, TargetPropagationMLP
-from shared import evaluate, cross_entropy_loss, count_parameters, count_updated_parameters
+from shared import evaluate, mse_loss, count_parameters, count_updated_parameters
 
 def train(
     model: Model,
@@ -43,7 +43,6 @@ def train_flat(
     n_params_to_update = 200
     n_solutions = 1
 
-    actions = [0.001, -0.001]
     solutions: list[Node] = []
 
     def cost_fn(node: Node):
@@ -87,34 +86,12 @@ def train_flat(
             if len(solutions) == n_solutions:
                 break
 
-        def optimize():
-            # note: optimizing for a random batch
-            batch_idx = np.random.randint(0, len(train_inputs) // batch_size)
-            batch_inputs = train_inputs[batch_idx * batch_size:(batch_idx + 1) * batch_size]
-            batch_labels = train_labels[batch_idx * batch_size:(batch_idx + 1) * batch_size]
+        batch_idx = np.random.randint(0, len(train_inputs) // batch_size)
+        batch_inputs = train_inputs[batch_idx * batch_size:(batch_idx + 1) * batch_size]
+        batch_labels = train_labels[batch_idx * batch_size:(batch_idx + 1) * batch_size]
 
-            # note: optimizing random portion of the neural network
-            n_params_updated = 0
-            for indices in random_parameter_indices(node.model.parameters()):
-                *tensor_indices, row_idx, col_idx = indices
-
-                for action in actions:
-                    next_model = node.model.copy()
-
-                    tensor = next_model.parameters()
-                    for idx in tensor_indices:
-                        tensor = tensor[idx]
-
-                    tensor[row_idx, col_idx] += action
-
-                    next_loss, next_accuracy = evaluate(next_model, batch_inputs, batch_labels)
-                    frontier.append(Node(model=next_model, depth=node.depth + 1, loss=next_loss, accuracy=next_accuracy, parent=node))
-
-                n_params_updated += 1
-                if n_params_updated == n_params_to_update:
-                    return
-        
-        optimize()
+        for next_node in expand(node, all_parameters, batch_inputs, batch_labels, n_params_to_update):
+            frontier.append(next_node)
 
     train_time = time.time() - start_time
 
@@ -181,7 +158,7 @@ def train_divide_and_conquer(
             hidden_neurons[u] = local_search(hidden_neuron, neuron_loss_fn, n_expansions)
 
         def output_loss_fn(candidate_output_mlp):
-            return cross_entropy_loss(batch_labels, candidate_output_mlp.forward(A_hidden_at_round_start)[0])
+            return mse_loss(batch_labels, candidate_output_mlp.forward(A_hidden_at_round_start)[0])
 
         output_mlp = local_search(output_mlp, output_loss_fn, n_expansions)
 
@@ -218,6 +195,28 @@ def train_divide_and_conquer(
         solution.model.plot(dataset)
 
     return test_accuracy, test_loss, updated_params_count, train_time
+
+def all_parameters(model: Model) -> list:
+    return model.parameters()
+
+def expand(node: 'Node', select_parameters: Callable[[Model], list], batch_inputs: np.ndarray, batch_labels: np.ndarray, n_params_to_update: int) -> Iterator['Node']:
+    actions = [0.001, -0.001]
+
+    for n_params_updated, (*tensor_indices, row_idx, col_idx) in enumerate(random_parameter_indices(select_parameters(node.model)), start=1):
+        for action in actions:
+            next_model = node.model.copy()
+
+            tensor = select_parameters(next_model)
+            for idx in tensor_indices:
+                tensor = tensor[idx]
+
+            tensor[row_idx, col_idx] += action
+
+            next_loss, next_accuracy = evaluate(next_model, batch_inputs, batch_labels)
+            yield Node(model=next_model, depth=node.depth + 1, loss=next_loss, accuracy=next_accuracy, parent=node)
+
+        if n_params_updated == n_params_to_update:
+            return
 
 def local_search(submodel: Any, loss_fn: Callable, n_expansions: int) -> Any:
     actions = [0.001, -0.001]
