@@ -36,7 +36,7 @@ def main():
         train_kwargs = dict(learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, should_plot=k <= 1)
     elif args.algo == 'joint':
         train_fn = joint.train
-        train_kwargs = dict(learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, should_plot=k <= 1)
+        train_kwargs = dict(learning_rate=learning_rate, batch_size=batch_size, n_epochs=n_epochs, goal=goal, should_plot=k <= 1)
     elif args.algo == 'astar':
         train_fn = a_star.train
         train_kwargs = dict(goal=goal, batch_size=batch_size, should_plot=k <= 1)

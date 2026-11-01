@@ -16,13 +16,14 @@ def train(
     dataset: str,
     should_plot: bool,
     after_each_step: Callable[[Model, np.ndarray, np.ndarray], None] | None = None,
+    goal: float | None = None,
 ) -> tuple[float, float, int, float]:
     start_time = time.time()
 
     initial_model = model.copy()
 
     print('Training...')
-    
+
     for e in range(1, n_epochs + 1):
         epoch_loss = 0
         epoch_accuracy = 0
@@ -44,10 +45,13 @@ def train(
             epoch_loss += batch_loss * len(batch_inputs)
             epoch_accuracy += accuracy(batch_labels, batch_predictions) * len(batch_inputs)
 
-        if e % 1 == 0:
-            epoch_loss /= len(train_inputs)
-            epoch_accuracy /= len(train_inputs)
-            print(f'\tepoch {e}: loss {epoch_loss:.3f}, accuracy {epoch_accuracy:.3f}')
+        epoch_loss /= len(train_inputs)
+        epoch_accuracy /= len(train_inputs)
+        print(f'\tepoch {e}: loss {epoch_loss:.3f}, accuracy {epoch_accuracy:.3f}')
+
+        if goal is not None and epoch_accuracy >= goal:
+            print(f'\t🎯 goal reached in epoch {e}')
+            break
 
     train_time = time.time() - start_time
     

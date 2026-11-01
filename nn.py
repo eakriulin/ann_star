@@ -1,5 +1,5 @@
 import numpy as np
-from models import Model, MLP, MoE, TargetPropagationMLP, NeuronActivationMLP, Layer
+from models import Model, MLP, MoE, TargetPropagationMLP, NeuronActivationMLP, NeuronActivations, Layer
 
 def initialize(dataset: str, architecture_type: str, method: str, last_activation: str, model_type: str) -> Model:
     return builders[model_type](dataset, architecture_type, method, last_activation)
@@ -209,9 +209,16 @@ def initialize_target_propagation_mlp(dataset: str, architecture_type: str, meth
 
 def initialize_neuron_activation_mlp(dataset: str, architecture_type: str, method: str, last_activation: str) -> NeuronActivationMLP:
     layers = mlp_layers(dataset, architecture_type, method)
-    neuron_activation_mlps_per_layer = [relu_like_activation_mlps(W.shape[1], method) for W, _ in layers[:-1]]
+    neuron_activations_per_layer = [relu_like_neuron_activations(W.shape[1], method) for W, _ in layers[:-1]]
 
-    return NeuronActivationMLP(layers, neuron_activation_mlps_per_layer, last_activation)
+    return NeuronActivationMLP(layers, neuron_activations_per_layer, last_activation)
+
+def relu_like_neuron_activations(n_neurons: int, method: str) -> NeuronActivations:
+    return NeuronActivations.stack([neuron_activations_from_mlp(activation_mlp) for activation_mlp in relu_like_activation_mlps(n_neurons, method)])
+
+def neuron_activations_from_mlp(activation_mlp: MLP) -> NeuronActivations:
+    (W_in, b_in), (W_out, b_out) = activation_mlp.layers
+    return NeuronActivations(W_in, b_in.T.copy(), W_out.T.copy(), b_out)
 
 def relu_like_activation_mlps(n_mlps: int, method: str) -> list[MLP]:
     return [MLP(relu_like_activation_layers(method), last_activation='linear') for _ in range(n_mlps)]

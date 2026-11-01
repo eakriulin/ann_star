@@ -24,7 +24,7 @@ class TargetPropagationMLPCache(NamedTuple):
 class NeuronActivationMLPCache(NamedTuple):
     Z_per_layer: list[np.ndarray]
     A_per_layer: list[np.ndarray]
-    neuron_activation_caches_per_layer: list[list[MLPCache]]
+    Z_inner_per_layer: list[np.ndarray]
 
 class Model(ABC):
     @abstractmethod
@@ -116,39 +116,81 @@ class MLP(Model):
         return MLP([(W.copy(), b.copy()) for W, b in self.layers], self.last_activation)
 
 
+class NeuronActivations:
+    def __init__(self, W_in: np.ndarray, b_in: np.ndarray, W_out: np.ndarray, b_out: np.ndarray):
+        self.W_in = W_in
+        self.b_in = b_in
+        self.W_out = W_out
+        self.b_out = b_out
+
+    def forward(self, Z: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        Z_inner = Z[:, :, np.newaxis] * self.W_in + self.b_in
+        A = np.sum(relu(Z_inner) * self.W_out, axis=2) + self.b_out[:, 0]
+
+        return A, Z_inner
+
+    def inputs_gradient(self, Z_inner: np.ndarray, A_gradient: np.ndarray) -> np.ndarray:
+        Z_inner_gradient = A_gradient[:, :, np.newaxis] * self.W_out * relu(Z_inner, as_derivative=True)
+        return np.sum(Z_inner_gradient * self.W_in, axis=2)
+
+    def neuron(self, u: int) -> 'NeuronActivations':
+        return NeuronActivations(*[parameter[u:u + 1].copy() for parameter in self.parameters()])
+
+    @staticmethod
+    def stack(neurons: list['NeuronActivations']) -> 'NeuronActivations':
+        return NeuronActivations(*[np.concatenate(parameter_per_neuron) for parameter_per_neuron in zip(*[neuron.parameters() for neuron in neurons])])
+
+    def n_neurons(self) -> int:
+        return self.W_in.shape[0]
+
+    def parameters(self) -> list[np.ndarray]:
+        return [self.W_in, self.b_in, self.W_out, self.b_out]
+
+    def copy(self) -> 'NeuronActivations':
+        return NeuronActivations(*[parameter.copy() for parameter in self.parameters()])
+
+
 class NeuronActivationMLP(Model):
     model_type = 'namlp'
 
-    def __init__(self, layers: list[Layer], neuron_activation_mlps_per_layer: list[list[MLP]], last_activation: str):
+    def __init__(self, layers: list[Layer], neuron_activations_per_layer: list[NeuronActivations], last_activation: str):
         self.layers = layers
-        self.neuron_activation_mlps_per_layer = neuron_activation_mlps_per_layer
+        self.neuron_activations_per_layer = neuron_activations_per_layer
         self.last_activation = last_activation
         self.last_activation_fn = activation_fn_by_name(last_activation)
 
     def forward(self, inputs: np.ndarray) -> tuple[np.ndarray, NeuronActivationMLPCache]:
+        cache = self._forward_layers(first_layer_idx=0, layer_input=inputs)
+        return cache.A_per_layer[-1], cache
+
+    def forward_from_layer(self, first_layer_idx: int, layer_input: np.ndarray) -> np.ndarray:
+        return self._forward_layers(first_layer_idx, layer_input).A_per_layer[-1]
+
+    def _forward_layers(self, first_layer_idx: int, layer_input: np.ndarray) -> NeuronActivationMLPCache:
         last_layer_idx = len(self.layers) - 1
 
         Z_per_layer = []
         A_per_layer = []
-        neuron_activation_caches_per_layer = []
+        Z_inner_per_layer = []
 
-        for l, (W, b) in enumerate(self.layers):
-            layer_input = inputs if l == 0 else A_per_layer[l - 1]
+        for l in range(first_layer_idx, len(self.layers)):
+            W, b = self.layers[l]
             Z = np.matmul(layer_input, W) + np.squeeze(b, axis=1)
 
             if l == last_layer_idx:
                 A = self.last_activation_fn(Z)
             else:
-                A, neuron_activation_caches = apply_neuron_activations(self.neuron_activation_mlps_per_layer[l], Z)
-                neuron_activation_caches_per_layer.append(neuron_activation_caches)
+                A, Z_inner = self.neuron_activations_per_layer[l].forward(Z)
+                Z_inner_per_layer.append(Z_inner)
 
             Z_per_layer.append(Z)
             A_per_layer.append(A)
+            layer_input = A
 
-        return A_per_layer[-1], NeuronActivationMLPCache(Z_per_layer, A_per_layer, neuron_activation_caches_per_layer)
+        return NeuronActivationMLPCache(Z_per_layer, A_per_layer, Z_inner_per_layer)
 
     def backward(self, inputs: np.ndarray, cache: NeuronActivationMLPCache, loss_derivative: np.ndarray) -> list[Layer]:
-        Z_per_layer, A_per_layer, neuron_activation_caches_per_layer = cache
+        Z_per_layer, A_per_layer, Z_inner_per_layer = cache
         last_layer_idx = len(self.layers) - 1
 
         layer_gradients = [None] * len(self.layers)
@@ -158,7 +200,7 @@ class NeuronActivationMLP(Model):
             if l < last_layer_idx:
                 W_next_layer, _ = self.layers[l + 1]
                 A_gradient = np.matmul(Z_gradient, W_next_layer.T)
-                _, Z_gradient = backward_through_neuron_activations(self.neuron_activation_mlps_per_layer[l], Z_per_layer[l], neuron_activation_caches_per_layer[l], A_gradient)
+                Z_gradient = self.neuron_activations_per_layer[l].inputs_gradient(Z_inner_per_layer[l], A_gradient)
 
             layer_input = inputs if l == 0 else A_per_layer[l - 1]
             layer_gradients[l] = (np.matmul(layer_input.T, Z_gradient), np.sum(Z_gradient, keepdims=True, axis=0))
@@ -170,24 +212,24 @@ class NeuronActivationMLP(Model):
 
     def parameters(self) -> list:
         layer_parameters = [[W, b] for W, b in self.layers]
-        neuron_activation_parameters = [[activation_mlp.parameters() for activation_mlp in activation_mlps] for activation_mlps in self.neuron_activation_mlps_per_layer]
+        neuron_activation_parameters = [neuron_activations.parameters() for neuron_activations in self.neuron_activations_per_layer]
 
         return [layer_parameters, neuron_activation_parameters]
 
     def copy(self) -> 'NeuronActivationMLP':
         return NeuronActivationMLP(
             [(W.copy(), b.copy()) for W, b in self.layers],
-            [[activation_mlp.copy() for activation_mlp in activation_mlps] for activation_mlps in self.neuron_activation_mlps_per_layer],
+            [neuron_activations.copy() for neuron_activations in self.neuron_activations_per_layer],
             self.last_activation,
         )
 
     def plot(self, dataset: str) -> None:
-        labeled_activation_mlps = [
-            (f'layer {l + 1}, neuron {u + 1}', activation_mlp)
-            for l, activation_mlps in enumerate(self.neuron_activation_mlps_per_layer)
-            for u, activation_mlp in enumerate(activation_mlps)
+        labeled_activations = [
+            (f'layer {l + 1}, neuron {u + 1}', neuron_activations.neuron(u))
+            for l, neuron_activations in enumerate(self.neuron_activations_per_layer)
+            for u in range(neuron_activations.n_neurons())
         ]
-        plot_learned_activations(labeled_activation_mlps, self.model_type, dataset)
+        plot_learned_activations(labeled_activations, self.model_type, dataset)
 
 
 class MoE(Model):
@@ -368,8 +410,8 @@ class TargetPropagationMLP(Model):
         )
 
     def plot(self, dataset: str) -> None:
-        labeled_activation_mlps = [(f'hidden neuron {u + 1}', activation_mlp) for u, activation_mlp in enumerate(self.neuron_activation_mlps)]
-        plot_learned_activations(labeled_activation_mlps, self.model_type, dataset)
+        labeled_activations = [(f'hidden neuron {u + 1}', activation_mlp) for u, activation_mlp in enumerate(self.neuron_activation_mlps)]
+        plot_learned_activations(labeled_activations, self.model_type, dataset)
 
 class HiddenNeuron:
     def __init__(self, w: np.ndarray, b: np.ndarray, activation_mlp: MLP):
@@ -412,12 +454,12 @@ def backward_through_neuron_activations(activation_mlps: list[MLP], Z: np.ndarra
 
     return neuron_activation_gradients, Z_gradient
 
-def plot_learned_activations(labeled_activation_mlps: list[tuple[str, MLP]], model_type: str, dataset: str) -> None:
+def plot_learned_activations(labeled_activations: list[tuple[str, MLP | NeuronActivations]], model_type: str, dataset: str) -> None:
     xs = np.linspace(-3, 3, 300)
 
     plt.figure(figsize=(10, 6))
-    for label, activation_mlp in labeled_activation_mlps:
-        ys, _ = activation_mlp.forward(xs.reshape(-1, 1))
+    for label, activation in labeled_activations:
+        ys, _ = activation.forward(xs.reshape(-1, 1))
         plt.plot(xs, ys.reshape(xs.shape), label=label)
     plt.plot(xs, relu(xs), 'k--', label='ReLU')
     plt.title('Learned activations (per hidden neuron)')

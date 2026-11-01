@@ -90,7 +90,7 @@ def train_flat(
         batch_inputs = train_inputs[batch_idx * batch_size:(batch_idx + 1) * batch_size]
         batch_labels = train_labels[batch_idx * batch_size:(batch_idx + 1) * batch_size]
 
-        for next_node in expand(node, all_parameters, batch_inputs, batch_labels, n_params_to_update):
+        for next_node in expand(node, all_parameters, lambda model: evaluate(model, batch_inputs, batch_labels), n_params_to_update):
             frontier.append(next_node)
 
     train_time = time.time() - start_time
@@ -196,10 +196,10 @@ def train_divide_and_conquer(
 
     return test_accuracy, test_loss, updated_params_count, train_time
 
-def all_parameters(model: Model) -> list:
+def all_parameters(model: Any) -> list:
     return model.parameters()
 
-def expand(node: 'Node', select_parameters: Callable[[Model], list], batch_inputs: np.ndarray, batch_labels: np.ndarray, n_params_to_update: int) -> Iterator['Node']:
+def expand(node: 'Node', select_parameters: Callable[[Any], list], evaluate_fn: Callable[[Any], tuple[float, float]], n_params_to_update: int) -> Iterator['Node']:
     actions = [0.001, -0.001]
 
     for n_params_updated, (*tensor_indices, row_idx, col_idx) in enumerate(random_parameter_indices(select_parameters(node.model)), start=1):
@@ -212,7 +212,7 @@ def expand(node: 'Node', select_parameters: Callable[[Model], list], batch_input
 
             tensor[row_idx, col_idx] += action
 
-            next_loss, next_accuracy = evaluate(next_model, batch_inputs, batch_labels)
+            next_loss, next_accuracy = evaluate_fn(next_model)
             yield Node(model=next_model, depth=node.depth + 1, loss=next_loss, accuracy=next_accuracy, parent=node)
 
         if n_params_updated == n_params_to_update:
