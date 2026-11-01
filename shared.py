@@ -30,13 +30,12 @@ def softmax(data: np.ndarray) -> np.ndarray:
     return exponents / np.sum(exponents, axis=1, keepdims=True)
 
 def mse_loss(labels: np.ndarray, predictions: np.ndarray, as_derivative=False) -> np.float64 | np.ndarray:
-    target = target_matrix(labels, n_outputs=predictions.shape[1])
-    clipped_predictions = np.clip(predictions, 1e-10, 1.0)
+    errors = predictions - target_matrix(labels, n_outputs=predictions.shape[1])
 
     if as_derivative:
-        return (clipped_predictions - target) / labels.shape[0]
+        return errors / labels.shape[0]
 
-    return np.sum((clipped_predictions - target) ** 2) / (2 * labels.shape[0])
+    return np.sum(errors ** 2) / (2 * labels.shape[0])
 
 def target_matrix(labels: np.ndarray, n_outputs: int) -> np.ndarray:
     if n_outputs == 1:
