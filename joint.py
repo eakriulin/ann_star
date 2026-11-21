@@ -1,4 +1,5 @@
 from concurrent.futures import Executor, ProcessPoolExecutor
+from typing import Callable
 import numpy as np
 import backprop
 from a_star import Node, all_parameters, expand
@@ -14,9 +15,10 @@ def train(
     learning_rate: float,
     batch_size: int,
     n_epochs: int,
-    goal: float,
+    goal: float | None,
     dataset: str,
     should_plot: bool,
+    should_stop_after_epoch: Callable[[NeuronActivationMLP, int], bool] | None = None,
 ) -> tuple[float, float, int, float]:
     with ProcessPoolExecutor() as pool:
         def search_neuron_activations_in_pool(model: NeuronActivationMLP, batch_inputs: np.ndarray, batch_labels: np.ndarray) -> None:
@@ -35,6 +37,8 @@ def train(
             should_plot,
             after_each_step=search_neuron_activations_in_pool,
             goal=goal,
+            algo='joint',
+            should_stop_after_epoch=should_stop_after_epoch,
         )
 
 def search_neuron_activations(model: NeuronActivationMLP, batch_inputs: np.ndarray, batch_labels: np.ndarray, pool: Executor) -> None:

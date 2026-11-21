@@ -25,7 +25,7 @@ def main():
     goal = int(args.goal) / 100
     batch_size = int(args.batch)
     n_epochs = int(args.epochs)
-    learning_rate = 0.001
+    learning_rate = 0.01
     initialization_method = 'zeros' if args.algo == 'astar' else 'he'
 
     def initialize():

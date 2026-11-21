@@ -109,7 +109,7 @@ def train_flat(
 
     if should_plot:
         plot_accuracy_vs_depth(solutions[0], goal, dataset, model.model_type)
-        solutions[0].model.plot(dataset)
+        solutions[0].model.plot(dataset, 'astar')
 
     return test_accuracy, test_loss, updated_params_count, train_time
 
@@ -192,7 +192,7 @@ def train_divide_and_conquer(
 
     if should_plot:
         plot_accuracy_vs_depth(solution, goal, dataset, model.model_type)
-        solution.model.plot(dataset)
+        solution.model.plot(dataset, 'astar')
 
     return test_accuracy, test_loss, updated_params_count, train_time
 

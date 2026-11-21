@@ -17,6 +17,8 @@ def train(
     should_plot: bool,
     after_each_step: Callable[[Model, np.ndarray, np.ndarray], None] | None = None,
     goal: float | None = None,
+    algo: str = 'backprop',
+    should_stop_after_epoch: Callable[[Model, int], bool] | None = None,
 ) -> tuple[float, float, int, float]:
     start_time = time.time()
 
@@ -53,6 +55,9 @@ def train(
             print(f'\t🎯 goal reached in epoch {e}')
             break
 
+        if should_stop_after_epoch is not None and should_stop_after_epoch(model, e):
+            break
+
     train_time = time.time() - start_time
     
     test_loss, test_accuracy = evaluate(model, test_inputs, test_labels)
@@ -64,6 +69,6 @@ def train(
     print(f'Train time, sec = {train_time:.2f}')
 
     if should_plot:
-        model.plot(dataset)
+        model.plot(dataset, algo)
 
     return test_accuracy, test_loss, updated_params_count, train_time

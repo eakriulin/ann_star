@@ -7,6 +7,8 @@ from shared import relu, softmax, activation_fn_by_name
 
 Layer = tuple[np.ndarray, np.ndarray]
 
+MAX_PLOTTED_ACTIVATIONS = 7
+
 class MLPCache(NamedTuple):
     Z_per_layer: list[np.ndarray]
     A_per_layer: list[np.ndarray]
@@ -47,7 +49,7 @@ class Model(ABC):
     def copy(self) -> 'Model':
         pass
 
-    def plot(self, dataset: str) -> None:
+    def plot(self, dataset: str, algo: str) -> None:
         pass
 
     model_type: str
@@ -223,13 +225,13 @@ class NeuronActivationMLP(Model):
             self.last_activation,
         )
 
-    def plot(self, dataset: str) -> None:
+    def plot(self, dataset: str, algo: str) -> None:
         labeled_activations = [
-            (f'layer {l + 1}, neuron {u + 1}', neuron_activations.neuron(u))
+            (f'hidden layer {l + 1}, neuron {u + 1}', neuron_activations.neuron(u))
             for l, neuron_activations in enumerate(self.neuron_activations_per_layer)
             for u in range(neuron_activations.n_neurons())
         ]
-        plot_learned_activations(labeled_activations, self.model_type, dataset)
+        plot_learned_activations(labeled_activations, algo, self.model_type, dataset)
 
 
 class MoE(Model):
@@ -409,9 +411,9 @@ class TargetPropagationMLP(Model):
             self.neuron_activation_learning_rate_scale,
         )
 
-    def plot(self, dataset: str) -> None:
+    def plot(self, dataset: str, algo: str) -> None:
         labeled_activations = [(f'hidden neuron {u + 1}', activation_mlp) for u, activation_mlp in enumerate(self.neuron_activation_mlps)]
-        plot_learned_activations(labeled_activations, self.model_type, dataset)
+        plot_learned_activations(labeled_activations, algo, self.model_type, dataset)
 
 class HiddenNeuron:
     def __init__(self, w: np.ndarray, b: np.ndarray, activation_mlp: MLP):
@@ -454,18 +456,47 @@ def backward_through_neuron_activations(activation_mlps: list[MLP], Z: np.ndarra
 
     return neuron_activation_gradients, Z_gradient
 
-def plot_learned_activations(labeled_activations: list[tuple[str, MLP | NeuronActivations]], model_type: str, dataset: str) -> None:
+def plot_learned_activations(labeled_activations: list[tuple[str, MLP | NeuronActivations]], algo: str, model_type: str, dataset: str) -> None:
     xs = np.linspace(-3, 3, 300)
+    labeled_curves = [(label, activation.forward(xs.reshape(-1, 1))[0].reshape(xs.shape)) for label, activation in labeled_activations]
+    most_different_overall = most_different_from_relu(xs, labeled_curves, overall_distance_from_relu)
+    most_different_shape = most_different_from_relu(xs, labeled_curves, shape_distance_from_relu)
+    color_by_label = colors_by_label(most_different_overall + most_different_shape)
 
-    plt.figure(figsize=(10, 6))
-    for label, activation in labeled_activations:
-        ys, _ = activation.forward(xs.reshape(-1, 1))
-        plt.plot(xs, ys.reshape(xs.shape), label=label)
-    plt.plot(xs, relu(xs), 'k--', label='ReLU')
-    plt.title('Learned activations (per hidden neuron)')
-    plt.xlabel('x')
-    plt.ylabel('f(x)')
-    plt.grid(True)
-    plt.legend()
+    figure, (overall_axes, shape_axes) = plt.subplots(1, 2, figsize=(16, 6))
+    plot_curves(overall_axes, xs, most_different_overall, color_by_label, f'Most different from ReLU: overall\n{len(most_different_overall)} of {len(labeled_curves)} hidden neurons')
+    plot_curves(shape_axes, xs, most_different_shape, color_by_label, f'Most different from ReLU: shape (slope and offset ignored)\n{len(most_different_shape)} of {len(labeled_curves)} hidden neurons')
+    figure.suptitle(f'algo: {algo}, model: {model_type}, dataset: {dataset}')
+    figure.tight_layout()
 
-    plt.savefig(f'./learned_activations_{model_type}_{dataset}_{time.time()}.png')
+    figure.savefig(f'./learned_activations_{algo}_{model_type}_{dataset}_{time.time()}.png')
+    plt.close(figure)
+
+def most_different_from_relu(xs: np.ndarray, labeled_curves: list[tuple[str, np.ndarray]], distance_fn) -> list[tuple[str, np.ndarray]]:
+    return sorted(labeled_curves, key=lambda labeled_curve: distance_fn(xs, labeled_curve[1]), reverse=True)[:MAX_PLOTTED_ACTIVATIONS]
+
+def colors_by_label(labeled_curves: list[tuple[str, np.ndarray]]) -> dict[str, tuple]:
+    unique_labels = list(dict.fromkeys(label for label, _ in labeled_curves))
+    paired_palette = plt.get_cmap('tab20').colors
+    palette = paired_palette[0::2] + paired_palette[1::2]
+    return {label: palette[i % len(palette)] for i, label in enumerate(unique_labels)}
+
+def plot_curves(axes, xs: np.ndarray, labeled_curves: list[tuple[str, np.ndarray]], color_by_label: dict[str, tuple], title: str) -> None:
+    for label, ys in labeled_curves:
+        axes.plot(xs, ys, label=label, color=color_by_label[label])
+    axes.plot(xs, relu(xs), 'k--', label='ReLU')
+    axes.set_title(title)
+    axes.set_xlabel('x')
+    axes.set_ylabel('f(x)')
+    axes.grid(True)
+    axes.legend()
+
+def overall_distance_from_relu(xs: np.ndarray, ys: np.ndarray) -> float:
+    return float(np.mean(np.abs(ys - relu(xs))))
+
+def shape_distance_from_relu(xs: np.ndarray, ys: np.ndarray) -> float:
+    scaled_relu_basis = np.column_stack([relu(xs), np.ones_like(xs)])
+    best_fit_coefficients, *_ = np.linalg.lstsq(scaled_relu_basis, ys, rcond=None)
+    residual = ys - scaled_relu_basis @ best_fit_coefficients
+
+    return float(np.sqrt(np.mean(residual ** 2)) / (np.std(ys) + 1e-12))
